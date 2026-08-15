@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Evotus - Universal Neural Network with Evolutionary Strategies
+Evotus - Универсальная нейронная сеть с эволюционными стратегиями
 """
 
 import random
@@ -13,14 +13,14 @@ from typing import Dict, List, Tuple, Optional, Set
 from enum import Enum
 import copy
 
-# Conditional import for Windows key press detection
+# Условный импорт для определения нажатия клавиш в Windows
 if os.name == 'nt':
     import msvcrt
 else:
     import termios
     import tty
 
-# Configuration file paths
+# Пути к файлам конфигурации
 CONFIG_FILE = "config.json"
 DATA_FILE = "data.txt"
 POPULATION_FILE = "population.json"
@@ -104,30 +104,30 @@ class Individual:
         return all_neurons - self.get_input_neurons() - self.get_output_neurons()
     
     def forward(self, inputs: List[float]) -> List[float]:
-        # Initialize neuron values
+        # Инициализировать значения нейронов
         neuron_values: Dict[int, float] = {}
         
-        # Set input neurons
+        # Установить входные нейроны
         for i, val in enumerate(inputs):
             neuron_values[i] = val
         
-        # Set bias neuron to 1.0 if it exists
+        # Установить нейрон смещения в 1.0 если он существует
         bias_id = self.input_size + self.output_size
         if bias_id in self.neurons:
             neuron_values[bias_id] = 1.0
         
-        # Get topological order for hidden and output neurons
+        # Получить топологический порядок для скрытых и выходных нейронов
         hidden = list(self.get_hidden_neurons())
         output = list(self.get_output_neurons())
         
-        # Remove bias from hidden (it's already set)
+        # Удалить смещение из скрытых (оно уже установлено)
         hidden = [h for h in hidden if h != bias_id]
         
-        # Simple iteration (may need multiple passes for recurrent networks)
+        # Простая итерация (может потребоваться несколько проходов для рекуррентных сетей)
         max_iterations = 10
         for _ in range(max_iterations):
             changed = False
-            # Process all non-input neurons
+            # Обработать все не-входные нейроны
             for neuron_id in hidden + output:
                 if neuron_id not in self.neurons:
                     continue
@@ -135,7 +135,7 @@ class Individual:
                 neuron = self.neurons[neuron_id]
                 act_func = ACTIVATION_FUNCTIONS[neuron.activation]
                 
-                # Sum weighted inputs
+                # Суммировать взвешенные входы
                 total = 0.0
                 for conn in self.connections:
                     if conn.to_neuron == neuron_id:
@@ -151,7 +151,7 @@ class Individual:
             if not changed:
                 break
         
-        # Extract outputs
+        # Извлечь выходы
         outputs = []
         for i in range(self.output_size):
             out_neuron_id = self.input_size + i
@@ -218,7 +218,7 @@ class DataManager:
                 
                 if self.data:
                     if len(inputs) != self.input_size or len(outputs) != self.output_size:
-                        print(f"Warning: Inconsistent data dimensions in line: {line}")
+                        print(f"Предупреждение: Несоответствие размерностей данных в строке: {line}")
                         continue
                 else:
                     self.input_size = len(inputs)
@@ -229,10 +229,10 @@ class DataManager:
         return len(self.data) > 0
     
     def save_example(self):
-        """Create an example data file if it doesn't exist"""
+        """Создаёт пример файла данных, если он не существует"""
         with open(self.filename, 'w') as f:
-            f.write("# Example XOR problem\n")
-            f.write("# Format: input1 input2 ... | output1 output2 ...\n")
+            f.write("# Пример задачи XOR\n")
+            f.write("# Формат: вход1 вход2 ... | выход1 выход2 ...\n")
             f.write("0 0 | 0\n")
             f.write("0 1 | 1\n")
             f.write("1 0 | 1\n")
@@ -314,8 +314,8 @@ class Mutator:
         
         neurons = list(individual.neurons.keys())
         
-        # Try to add a connection from input/hidden to output/hidden
-        # This ensures signal can flow
+        # Попытаться добавить связь от входа/скрытого к выходу/скрытому
+        # Это обеспечивает передачу сигнала
         max_attempts = 50
         for _ in range(max_attempts):
             from_neuron = random.choice(neurons)
@@ -324,7 +324,7 @@ class Mutator:
             if from_neuron == to_neuron:
                 continue
             
-            # Check if connection already exists
+            # Проверить, существует ли уже связь
             exists = False
             for conn in individual.connections:
                 if conn.from_neuron == from_neuron and conn.to_neuron == to_neuron:
@@ -341,13 +341,13 @@ class Mutator:
             individual.connections.pop(random.randrange(len(individual.connections)))
     
     def _add_neuron(self, individual: Individual):
-        # Find a free neuron ID
+        # Найти свободный ID нейрона
         existing_ids = set(individual.neurons.keys())
         new_id = 0
         while new_id in existing_ids:
             new_id += 1
         
-        # Don't add neurons in input/output range
+        # Не добавлять нейроны в диапазон входа/выхода
         input_range = set(range(individual.input_size))
         output_range = set(range(individual.input_size, individual.input_size + individual.output_size))
         
@@ -366,7 +366,7 @@ class Mutator:
         
         neuron_id = random.choice(list(hidden))
         
-        # Remove all connections involving this neuron
+        # Удалить все связи, затрагивающие этот нейрон
         individual.connections = [
             c for c in individual.connections 
             if c.from_neuron != neuron_id and c.to_neuron != neuron_id
@@ -392,11 +392,11 @@ class FitnessCalculator:
     
     def calculate(self, individual: Individual) -> Tuple[float, int]:
         """
-        Calculate fitness as sum of squared errors.
-        Returns (error, complexity) tuple.
-        Lower error is better.
-        If errors are equal, lower complexity is better.
-        BUT: if one has higher complexity but even slightly lower error, it's better.
+        Вычисляет приспособленность как сумму квадратов ошибок.
+        Возвращает кортеж (ошибка, сложность).
+        Меньшая ошибка лучше.
+        Если ошибки равны, меньшая сложность лучше.
+        НО: если одна имеет большую сложность, но даже немного меньшую ошибку, она лучше.
         """
         if not self.data_manager.data:
             return float('inf'), individual.complexity
@@ -414,16 +414,16 @@ class FitnessCalculator:
     
     def compare_fitness(self, ind1: Individual, ind2: Individual) -> int:
         """
-        Compare two individuals.
-        Returns:
-          -1 if ind1 is better
-           1 if ind2 is better
-           0 if equal
+        Сравнивает две особи.
+        Возвращает:
+          -1 если ind1 лучше
+           1 если ind2 лучше
+           0 если равны
         
-        Rules:
-        - Lower error is always better
-        - If errors are equal, lower complexity is better
-        - Higher complexity with even slightly lower error is better
+        Правила:
+        - Меньшая ошибка всегда лучше
+        - Если ошибки равны, меньшая сложность лучше
+        - Большая сложность с даже немного меньшей ошибкой лучше
         """
         err1, comp1 = ind1.fitness, ind1.complexity
         err2, comp2 = ind2.fitness, ind2.complexity
@@ -454,7 +454,7 @@ class PopulationManager:
         self.generation = 0
     
     def initialize(self):
-        """Create initial zero neural network population with some random connections"""
+        """Создаёт начальную нулевую популяцию нейронных сетей с некоторыми случайными связями"""
         self.internal_population = []
         
         for _ in range(self.config.get('population_size')):
@@ -495,13 +495,13 @@ class PopulationManager:
         self.generation = 0
     
     def evolve_generation(self, num_generations: int) -> List[str]:
-        """Run evolution for specified number of generations"""
+        """Запускает эволюцию на указанное количество поколений"""
         progress_log = []
         
         for gen in range(num_generations):
             self.generation += 1
             
-            # Each individual produces offspring
+            # Каждая особь производит потомков
             new_population = []
             
             for parent_idx, parent in enumerate(self.internal_population):
@@ -514,29 +514,29 @@ class PopulationManager:
                     mutations = self.config.get('mutations_per_offspring')
                     offspring = self.mutator.mutate(parent, mutations)
                     
-                    # Ensure offspring has at least some connections if parent has none
+                    # Гарантируем, что у потомка есть хотя бы некоторые связи, если у родителя их нет
                     if len(parent.connections) == 0 and len(offspring.connections) == 0:
-                        # Force add a connection
+                        # Принудительно добавляем связь
                         self._force_add_connection(offspring)
                     
-                    # Evaluate offspring fitness
+                    # Оцениваем приспособленность потомка
                     error, _ = self.fitness_calc.calculate(offspring)
                     
                     if error < best_offspring_error:
                         best_offspring = offspring
                         best_offspring_error = error
                 
-                # Compare best offspring with parent
+                # Сравниваем лучшего потомка с родителем
                 parent_error = parent.fitness
                 if parent_error == float('inf'):
                     parent_error, _ = self.fitness_calc.calculate(parent)
                     parent.fitness = parent_error
                 
-                # Direct comparison: offspring replaces parent only if strictly better
+                # Прямое сравнение: потомок заменяет родителя только если строго лучше
                 if best_offspring_error < parent_error - 1e-15:
                     new_population.append(best_offspring)
                 elif abs(best_offspring_error - parent_error) <= 1e-15:
-                    # Equal errors, prefer lower complexity
+                    # Равные ошибки, предпочитаем меньшую сложность
                     if best_offspring.complexity < parent.complexity:
                         new_population.append(best_offspring)
                     else:
@@ -546,17 +546,17 @@ class PopulationManager:
             
             self.internal_population = new_population
             
-            # Log progress
+            # Записываем прогресс
             best = min(self.internal_population, key=lambda x: x.fitness)
             avg_fitness = sum(ind.fitness for ind in self.internal_population) / len(self.internal_population)
             progress_log.append(
-                f"Generation {self.generation}: Best={best.fitness:.10f}, Avg={avg_fitness:.10f}"
+                f"Поколение {self.generation}: Лучшая={best.fitness:.10f}, Средняя={avg_fitness:.10f}"
             )
         
         return progress_log
     
     def _force_add_connection(self, individual: Individual):
-        """Force add a connection between random neurons, ensuring input can reach output"""
+        """Принудительно добавляет связь между случайными нейронами, обеспечивая передачу сигнала от входа к выходу"""
         if len(individual.neurons) < 2:
             return
         
@@ -661,23 +661,23 @@ def wait_for_key():
 def show_menu() -> int:
     clear_screen()
     print("=" * 60)
-    print("EVOTUS - Universal Neural Network with Evolutionary Strategies")
+    print("EVOTUS - Универсальная нейронная сеть с эволюционными стратегиями")
     print("=" * 60)
-    print("\nMain Menu:")
-    print("1. Start Evolution")
-    print("2. Test Current Best Individual")
-    print("3. View Population Status")
-    print("4. Save Population")
-    print("5. Load Population")
-    print("6. Configure Settings")
-    print("7. View/Edit Training Data")
-    print("8. Export Best Individual to File")
-    print("9. Import Individual from File")
-    print("0. Exit")
+    print("\nГлавное меню:")
+    print("1. Начать эволюцию")
+    print("2. Тестировать текущую лучшую особь")
+    print("3. Просмотреть статус популяции")
+    print("4. Сохранить популяцию")
+    print("5. Загрузить популяцию")
+    print("6. Настройки")
+    print("7. Просмотреть/редактировать обучающие данные")
+    print("8. Экспортировать лучшую особь в файл")
+    print("9. Импортировать особь из файла")
+    print("0. Выход")
     print("\n" + "=" * 60)
     
     try:
-        choice = int(input("Enter choice: "))
+        choice = int(input("Введите выбор: "))
         return choice
     except (ValueError, EOFError):
         return -1
@@ -686,17 +686,17 @@ def show_menu() -> int:
 def run_evolution(pop_manager: PopulationManager):
     clear_screen()
     print("=" * 60)
-    print("EVOLUTION MODE")
+    print("РЕЖИМ ЭВОЛЮЦИИ")
     print("=" * 60)
     
     try:
-        num_gens = int(input("Enter number of generations to evolve: "))
+        num_gens = int(input("Введите количество поколений для эволюции: "))
     except (ValueError, EOFError):
-        print("Invalid input!")
+        print("Неверный ввод!")
         wait_for_key()
         return
     
-    print(f"\nStarting evolution for {num_gens} generations...")
+    print(f"\nЗапуск эволюции на {num_gens} поколений...")
     print("-" * 60)
     
     progress = pop_manager.evolve_generation(num_gens)
@@ -706,13 +706,13 @@ def run_evolution(pop_manager: PopulationManager):
     
     print("-" * 60)
     best = pop_manager.get_best()
-    print(f"\nEvolution complete!")
-    print(f"Best fitness: {best.fitness:.15f}")
-    print(f"Complexity: {best.complexity}")
-    print(f"Neurons: {len(best.neurons)}")
-    print(f"Connections: {len(best.connections)}")
+    print(f"\nЭволюция завершена!")
+    print(f"Лучшая приспособленность: {best.fitness:.15f}")
+    print(f"Сложность: {best.complexity}")
+    print(f"Нейроны: {len(best.neurons)}")
+    print(f"Связи: {len(best.connections)}")
     
-    print("\nPress any key to return to menu...")
+    print("\nНажмите любую клавишу для возврата в меню...")
     wait_for_key()
 
 
@@ -720,23 +720,23 @@ def test_individual(pop_manager: PopulationManager):
     best = pop_manager.get_best()
     
     if best is None or not best.neurons:
-        print("\nNo trained individual available! Run evolution first.")
+        print("\nНет обученной особи! Сначала запустите эволюцию.")
         wait_for_key()
         return
     
     clear_screen()
     print("=" * 60)
-    print("TESTING MODE")
+    print("РЕЖИМ ТЕСТИРОВАНИЯ")
     print("=" * 60)
-    print(f"Network: {len(best.neurons)} neurons, {len(best.connections)} connections")
-    print(f"Input size: {best.input_size}, Output size: {best.output_size}")
+    print(f"Сеть: {len(best.neurons)} нейронов, {len(best.connections)} связей")
+    print(f"Размер входа: {best.input_size}, Размер выхода: {best.output_size}")
     print("-" * 60)
-    print("Enter input values separated by spaces (or 'q' to quit)")
+    print("Введите входные значения через пробел (или 'q' для выхода)")
     print()
     
     while True:
         try:
-            user_input = input(f"Input ({best.input_size} values): ").strip()
+            user_input = input(f"Вход ({best.input_size} значений): ").strip()
             
             if user_input.lower() == 'q':
                 break
@@ -744,80 +744,80 @@ def test_individual(pop_manager: PopulationManager):
             values = [float(x) for x in user_input.split()]
             
             if len(values) != best.input_size:
-                print(f"Error: Expected {best.input_size} values, got {len(values)}")
+                print(f"Ошибка: Ожидалось {best.input_size} значений, получено {len(values)}")
                 continue
             
             outputs = best.forward(values)
             
-            print(f"Output: {' '.join(f'{o:.10f}' for o in outputs)}")
+            print(f"Выход: {' '.join(f'{o:.10f}' for o in outputs)}")
             print()
             
         except ValueError:
-            print("Error: Invalid input format")
+            print("Ошибка: Неверный формат ввода")
         except EOFError:
             break
     
-    print("\nPress any key to return to menu...")
+    print("\nНажмите любую клавишу для возврата в меню...")
     wait_for_key()
 
 
 def view_status(pop_manager: PopulationManager):
     clear_screen()
     print("=" * 60)
-    print("POPULATION STATUS")
+    print("СТАТУС ПОПУЛЯЦИИ")
     print("=" * 60)
-    print(f"Generation: {pop_manager.generation}")
-    print(f"Population size: {len(pop_manager.internal_population)}")
+    print(f"Поколение: {pop_manager.generation}")
+    print(f"Размер популяции: {len(pop_manager.internal_population)}")
     print()
     
     if pop_manager.internal_population:
         sorted_pop = sorted(pop_manager.internal_population, key=lambda x: x.fitness)
-        print("Top 5 individuals:")
+        print("Топ 5 особей:")
         print("-" * 60)
         for i, ind in enumerate(sorted_pop[:5]):
-            print(f"{i+1}. Fitness: {ind.fitness:.15f}, Complexity: {ind.complexity}, "
-                  f"Neurons: {len(ind.neurons)}, Connections: {len(ind.connections)}")
+            print(f"{i+1}. Приспособленность: {ind.fitness:.15f}, Сложность: {ind.complexity}, "
+                  f"Нейроны: {len(ind.neurons)}, Связи: {len(ind.connections)}")
     
-    print("\nPress any key to return to menu...")
+    print("\nНажмите любую клавишу для возврата в меню...")
     wait_for_key()
 
 
 def configure_settings(config: ConfigManager):
     clear_screen()
     print("=" * 60)
-    print("CONFIGURATION")
+    print("НАСТРОЙКИ")
     print("=" * 60)
     
     for key, value in config.config.items():
         print(f"{key}: {value}")
     
-    print("\nEnter setting name and value to change (or 'q' to quit)")
+    print("\nВведите имя параметра и значение для изменения (или 'q' для выхода)")
     
     while True:
         try:
-            user_input = input("\nSetting name: ").strip()
+            user_input = input("\nИмя параметра: ").strip()
             
             if user_input.lower() == 'q':
                 break
             
             if user_input not in config.config:
-                print(f"Unknown setting: {user_input}")
+                print(f"Неизвестный параметр: {user_input}")
                 continue
             
             current_type = type(config.config[user_input])
-            value_input = input(f"New value (current: {config.config[user_input]}): ").strip()
+            value_input = input(f"Новое значение (текущее: {config.config[user_input]}): ").strip()
             
             try:
                 new_value = current_type(value_input)
                 config.set(user_input, new_value)
-                print(f"Updated {user_input} = {new_value}")
+                print(f"Обновлено {user_input} = {new_value}")
             except ValueError:
-                print(f"Invalid value type. Expected {current_type.__name__}")
+                print(f"Неверный тип значения. Ожидался {current_type.__name__}")
             
         except EOFError:
             break
     
-    print("\nPress any key to return to menu...")
+    print("\nНажмите любую клавишу для возврата в меню...")
     wait_for_key()
 
 
@@ -825,11 +825,11 @@ def export_individual(pop_manager: PopulationManager):
     best = pop_manager.get_best()
     
     if best is None:
-        print("\nNo individual to export!")
+        print("\nНет особи для экспорта!")
         wait_for_key()
         return
     
-    filename = input("Enter filename to export to: ").strip()
+    filename = input("Введите имя файла для экспорта: ").strip()
     
     if not filename:
         filename = "best_individual.json"
@@ -837,16 +837,16 @@ def export_individual(pop_manager: PopulationManager):
     with open(filename, 'w') as f:
         json.dump(best.save_to_dict(), f, indent=2)
     
-    print(f"Exported to {filename}")
-    print("\nPress any key to return to menu...")
+    print(f"Экспортировано в {filename}")
+    print("\nНажмите любую клавишу для возврата в меню...")
     wait_for_key()
 
 
 def import_individual(pop_manager: PopulationManager):
-    filename = input("Enter filename to import from: ").strip()
+    filename = input("Введите имя файла для импорта: ").strip()
     
     if not os.path.exists(filename):
-        print(f"File not found: {filename}")
+        print(f"Файл не найден: {filename}")
         wait_for_key()
         return
     
@@ -856,7 +856,7 @@ def import_individual(pop_manager: PopulationManager):
         
         individual = Individual.load_from_dict(data)
         
-        # Add to population or replace worst
+        # Добавить в популяцию или заменить худшую
         if pop_manager.internal_population:
             worst_idx = max(range(len(pop_manager.internal_population)), 
                           key=lambda i: pop_manager.internal_population[i].fitness)
@@ -864,45 +864,45 @@ def import_individual(pop_manager: PopulationManager):
         else:
             pop_manager.internal_population.append(individual)
         
-        print(f"Imported individual from {filename}")
+        print(f"Импортирована особь из {filename}")
     except Exception as e:
-        print(f"Error importing: {e}")
+        print(f"Ошибка импорта: {e}")
     
-    print("\nPress any key to return to menu...")
+    print("\nНажмите любую клавишу для возврата в меню...")
     wait_for_key()
 
 
 def main():
-    # Initialize managers
+    # Инициализация менеджеров
     config = ConfigManager()
     data_manager = DataManager()
     
-    # Create example data file if needed
+    # Создать пример файла данных, если нужно
     if not os.path.exists(DATA_FILE):
         data_manager.save_example()
-        print(f"Created example data file: {DATA_FILE}")
+        print(f"Создан пример файла данных: {DATA_FILE}")
     
-    # Load training data
+    # Загрузить обучающие данные
     if not data_manager.load():
-        print(f"Error loading data from {DATA_FILE}")
-        print("Please ensure the file exists and contains valid data.")
+        print(f"Ошибка загрузки данных из {DATA_FILE}")
+        print("Убедитесь, что файл существует и содержит корректные данные.")
         return
     
-    print(f"Loaded {len(data_manager.data)} training samples")
-    print(f"Input size: {data_manager.input_size}, Output size: {data_manager.output_size}")
+    print(f"Загружено {len(data_manager.data)} обучающих примеров")
+    print(f"Размер входа: {data_manager.input_size}, Размер выхода: {data_manager.output_size}")
     
     mutator = Mutator(config)
     fitness_calc = FitnessCalculator(data_manager)
     pop_manager = PopulationManager(config, data_manager, mutator, fitness_calc)
     
-    # Try to load existing population
+    # Попытаться загрузить существующую популяцию
     if pop_manager.load():
-        print(f"Loaded population from generation {pop_manager.generation}")
+        print(f"Загружена популяция из поколения {pop_manager.generation}")
     else:
-        print("Initializing new population...")
+        print("Инициализация новой популяции...")
         pop_manager.initialize()
     
-    # Main loop
+    # Главный цикл
     while True:
         choice = show_menu()
         
@@ -914,39 +914,39 @@ def main():
             view_status(pop_manager)
         elif choice == 4:
             pop_manager.save()
-            print("Population saved!")
+            print("Популяция сохранена!")
             wait_for_key()
         elif choice == 5:
             if pop_manager.load():
-                print(f"Loaded population from generation {pop_manager.generation}")
+                print(f"Загружена популяция из поколения {pop_manager.generation}")
             else:
-                print("No saved population found!")
+                print("Сохранённая популяция не найдена!")
             wait_for_key()
         elif choice == 6:
             configure_settings(config)
         elif choice == 7:
-            print(f"\nOpening {DATA_FILE} for editing...")
-            print("Edit the file and press any key when done...")
+            print(f"\nОткрытие {DATA_FILE} для редактирования...")
+            print("Отредактируйте файл и нажмите любую клавишу когда закончите...")
             wait_for_key()
-            # Reload data after editing
+            # Перезагрузить данные после редактирования
             if data_manager.load():
-                print(f"Reloaded {len(data_manager.data)} training samples")
-                # Reinitialize population with new data dimensions
+                print(f"Перезагружено {len(data_manager.data)} обучающих примеров")
+                # Реинициализировать популяцию с новыми размерами данных
                 pop_manager.initialize()
             else:
-                print("Error reloading data!")
+                print("Ошибка перезагрузки данных!")
             wait_for_key()
         elif choice == 8:
             export_individual(pop_manager)
         elif choice == 9:
             import_individual(pop_manager)
         elif choice == 0:
-            print("Saving population before exit...")
+            print("Сохранение популяции перед выходом...")
             pop_manager.save()
-            print("Goodbye!")
+            print("До свидания!")
             break
         else:
-            print("Invalid choice!")
+            print("Неверный выбор!")
             wait_for_key()
 
 
