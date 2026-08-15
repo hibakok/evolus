@@ -971,8 +971,8 @@ function runEvolutionLoop(totalGenerations) {
         document.getElementById('progressFill').style.width = progress + '%';
         document.getElementById('progressFill').textContent = Math.round(progress) + '%';
 
-        const bestLog = isFinite(result.bestFitness) ? result.bestFitness.toExponential(4) : 'Infinity';
-        const avgLog = isFinite(result.avgFitness) ? result.avgFitness.toExponential(4) : 'Infinity';
+        const bestLog = isFinite(result.bestFitness) ? result.bestFitness.toExponential(4) : 'N/A';
+        const avgLog = isFinite(result.avgFitness) ? result.avgFitness.toExponential(4) : 'N/A';
         log(`Поколение ${result.generation}: Лучшая=${bestLog}, Средняя=${avgLog}`, 'evolutionLog');
 
         evolutionTimeout = setTimeout(step, 10);
