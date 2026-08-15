@@ -91,7 +91,7 @@ public class TrainingDataLoaderTests
             
             Assert.Equal(4, pairs.Count);
             Assert.Equal(2, pairs[0].Input.Length);
-            Assert.Equal(1, pairs[0].Output.Length);
+            Assert.Single(pairs[0].Output);
         }
         finally
         {
