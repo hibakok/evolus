@@ -74,6 +74,7 @@ ACTIVATION_FUNCTIONS = {
 class Neuron:
     id: int
     activation: ActivationFunction = ActivationFunction.SIGMOID
+    bias: float = 0.0
 
 @dataclass(slots=True)
 class Connection:
@@ -109,7 +110,7 @@ class Individual:
         self._needs_rebuild = False
     
     def clone(self) -> 'Individual':
-        new_neurons = {k: Neuron(v.id, v.activation) for k, v in self.neurons.items()}
+        new_neurons = {k: Neuron(v.id, v.activation, v.bias) for k, v in self.neurons.items()}
         new_connections = [Connection(c.from_neuron, c.to_neuron, c.weight) for c in self.connections]
         clone = Individual(
             neurons=new_neurons,
@@ -173,7 +174,7 @@ class Individual:
                 act_func = ACTIVATION_FUNCTIONS[neuron.activation]
                 
                 # Использовать кэш для быстрого доступа к связям
-                total = 0.0
+                total = neuron.bias  # Добавляем смещение нейрона
                 if neuron_id in self._conn_by_target:
                     for from_neuron, weight in self._conn_by_target[neuron_id]:
                         if from_neuron in neuron_values:
@@ -201,7 +202,7 @@ class Individual:
     
     def save_to_dict(self) -> dict:
         return {
-            'neurons': {str(k): {'id': v.id, 'activation': v.activation.value} 
+            'neurons': {str(k): {'id': v.id, 'activation': v.activation.value, 'bias': v.bias} 
                        for k, v in self.neurons.items()},
             'connections': [{'from': c.from_neuron, 'to': c.to_neuron, 'weight': c.weight} 
                            for c in self.connections],
@@ -214,7 +215,7 @@ class Individual:
     @classmethod
     def load_from_dict(cls, data: dict) -> 'Individual':
         individual = cls()
-        individual.neurons = {int(k): Neuron(v['id'], ActivationFunction(v['activation'])) 
+        individual.neurons = {int(k): Neuron(v['id'], ActivationFunction(v['activation']), v.get('bias', 0.0)) 
                              for k, v in data['neurons'].items()}
         individual.connections = [Connection(c['from'], c['to'], c['weight']) 
                                  for c in data['connections']]
@@ -341,41 +342,62 @@ class Mutator:
         self._activation_list = list(ActivationFunction)
     
     def mutate(self, individual: Individual, num_mutations: int) -> Individual:
+        """
+        Применяет мутации к индивиду.
+        Мутации применяются как последовательность минимальных изменений:
+        - добавление/удаление нейрона
+        - добавление/удаление связи между нейронами
+        - изменение веса связи нейронов
+        - изменение биаса нейрона
+        
+        Масштаб мутаций определяется количеством одновременных случайных мелких мутаций (num_mutations).
+        """
         mutant = individual.clone()
         
-        # Предварительно вычисляем пороги
-        rate_weight = self.config.get('mutation_rate_weight')
-        rate_conn = rate_weight + self.config.get('mutation_rate_connection')
-        rate_neuron = rate_conn + self.config.get('mutation_rate_neuron')
-        weight_std = self.config.get('weight_mutation_std')
-        
         for _ in range(num_mutations):
-            mutation_type = random.random()
+            # Выбираем случайный тип минимальной мутации с равной вероятностью
+            mutation_choice = random.randint(0, 5)
             
-            if mutation_type < rate_weight:
-                self._mutate_weight_fast(mutant, weight_std)
-            elif mutation_type < rate_conn:
-                if random.random() < 0.5:
-                    self._add_connection_fast(mutant)
-                else:
-                    self._remove_connection_fast(mutant)
-            elif mutation_type < rate_neuron:
-                if random.random() < 0.5:
-                    self._add_neuron_fast(mutant)
-                else:
-                    self._remove_neuron_fast(mutant)
-            else:
-                self._mutate_activation_fast(mutant)
+            if mutation_choice == 0:
+                # Изменение веса связи
+                self._mutate_weight_fast(mutant)
+            elif mutation_choice == 1:
+                # Добавление связи
+                self._add_connection_fast(mutant)
+            elif mutation_choice == 2:
+                # Удаление связи
+                self._remove_connection_fast(mutant)
+            elif mutation_choice == 3:
+                # Добавление нейрона
+                self._add_neuron_fast(mutant)
+            elif mutation_choice == 4:
+                # Удаление нейрона
+                self._remove_neuron_fast(mutant)
+            elif mutation_choice == 5:
+                # Изменение биаса нейрона
+                self._mutate_bias_fast(mutant)
         
         mutant.complexity = len(mutant.connections)
         mutant._needs_rebuild = True  # Пометить для перестройки кэша
         return mutant
     
-    def _mutate_weight_fast(self, individual: Individual, weight_std: float):
+    def _mutate_weight_fast(self, individual: Individual):
+        """Изменяет вес случайной связи (минимальная мутация)"""
         if not individual.connections:
             return
         conn = random.choice(individual.connections)
-        conn.weight += random.gauss(0, weight_std)
+        # Небольшое изменение веса
+        conn.weight += random.gauss(0, self.config.get('weight_mutation_std'))
+    
+    def _mutate_bias_fast(self, individual: Individual):
+        """Изменяет биас случайного нейрона (минимальная мутация)"""
+        if not individual.neurons:
+            return
+        
+        neuron_id = random.choice(list(individual.neurons.keys()))
+        neuron = individual.neurons[neuron_id]
+        # Небольшое изменение биаса
+        neuron.bias += random.gauss(0, self.config.get('weight_mutation_std', 0.5))
     
     def _add_connection_fast(self, individual: Individual):
         if len(individual.neurons) < 2:
@@ -430,6 +452,7 @@ class Mutator:
             individual.connections.pop(random.randrange(len(individual.connections)))
     
     def _add_neuron_fast(self, individual: Individual):
+        """Добавляет новый нейрон (минимальная мутация)"""
         existing_ids = set(individual.neurons.keys())
         new_id = max(existing_ids) + 1 if existing_ids else 0
         
@@ -439,9 +462,11 @@ class Mutator:
         while new_id in input_range or new_id in output_range:
             new_id += 1
         
-        individual.neurons[new_id] = Neuron(new_id, random.choice(self._activation_list))
+        # Новый нейрон с нулевым биасом
+        individual.neurons[new_id] = Neuron(new_id, random.choice(self._activation_list), bias=0.0)
     
     def _remove_neuron_fast(self, individual: Individual):
+        """Удаляет случайный скрытый нейрон (минимальная мутация)"""
         hidden = individual.get_hidden_neurons()
         if not hidden:
             return
@@ -577,23 +602,23 @@ class PopulationManager:
             
             # Create input neurons
             for i in range(individual.input_size):
-                individual.neurons[i] = Neuron(i, ActivationFunction.LINEAR)
+                individual.neurons[i] = Neuron(i, ActivationFunction.LINEAR, bias=0.0)
             
             # Create output neurons
             for i in range(individual.output_size):
                 neuron_id = individual.input_size + i
-                individual.neurons[neuron_id] = Neuron(neuron_id, ActivationFunction.SIGMOID)
+                individual.neurons[neuron_id] = Neuron(neuron_id, ActivationFunction.SIGMOID, bias=0.0)
             
             # Add bias neuron (constant value of 1)
             bias_id = individual.input_size + individual.output_size
-            individual.neurons[bias_id] = Neuron(bias_id, ActivationFunction.LINEAR)
+            individual.neurons[bias_id] = Neuron(bias_id, ActivationFunction.LINEAR, bias=0.0)
             
             # Add initial hidden neurons for better starting point
             num_hidden = self.config.get('initial_hidden_neurons', 4)
             hidden_ids = []
             for i in range(num_hidden):
                 hid_id = bias_id + 1 + i
-                individual.neurons[hid_id] = Neuron(hid_id, ActivationFunction.SIGMOID)
+                individual.neurons[hid_id] = Neuron(hid_id, ActivationFunction.SIGMOID, bias=0.0)
                 hidden_ids.append(hid_id)
             
             # Connect inputs to hidden neurons
