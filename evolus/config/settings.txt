@@ -1,9 +1,0 @@
-# Настройки эволюционного алгоритма evolus
-# Формат: ключ=значение
-
-InnerPopulationSize=10
-OffspringPerIndividual=3
-MutationsPerOffspring=5
-InputCount=2
-OutputCount=1
-RandomSeed=42
