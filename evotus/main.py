@@ -583,7 +583,7 @@ class PopulationManager:
         
         self.generation = 0
     
-    def evolve_generation(self, num_generations: int) -> List[str]:
+    def evolve_generation(self, num_generations: int, print_interval: int = 1) -> List[str]:
         """Запускает эволюцию на указанное количество поколений с адаптивной мутацией"""
         progress_log = []
         
@@ -594,6 +594,9 @@ class PopulationManager:
         
         for gen in range(num_generations):
             self.generation += 1
+            
+            # Выводим прогресс только в определенные интервалы
+            should_log = (gen % print_interval == 0) or (gen == num_generations - 1)
             
             # Каждая особь производит потомков
             new_population = []
@@ -648,38 +651,39 @@ class PopulationManager:
             
             self.internal_population = new_population
             
-            # Записываем прогресс
-            best = min(self.internal_population, key=lambda x: x.fitness)
-            avg_fitness = sum(ind.fitness for ind in self.internal_population) / len(self.internal_population)
-            
-            # Проверка на улучшение для адаптации мутаций
-            if best.fitness < best_ever_fitness - 1e-12:
-                best_ever_fitness = best.fitness
-                stagnation_counter = 0
-                # Уменьшить силу мутаций для точной настройки
-                current_mutation_std = max(
-                    self.config.get('min_mutation_std', 0.01),
-                    current_mutation_std * 0.95
-                )
-            else:
-                stagnation_counter += 1
-                # Если застой, увеличить разнообразие мутаций
-                if stagnation_counter > 20:
-                    current_mutation_std = min(
-                        self.config.get('max_mutation_std', 2.0),
-                        current_mutation_std * 1.1
+            # Записываем прогресс только если нужно
+            if should_log:
+                best = min(self.internal_population, key=lambda x: x.fitness)
+                avg_fitness = sum(ind.fitness for ind in self.internal_population) / len(self.internal_population)
+                
+                # Проверка на улучшение для адаптации мутаций
+                if best.fitness < best_ever_fitness - 1e-12:
+                    best_ever_fitness = best.fitness
+                    stagnation_counter = 0
+                    # Уменьшить силу мутаций для точной настройки
+                    current_mutation_std = max(
+                        self.config.get('min_mutation_std', 0.01),
+                        current_mutation_std * 0.95
                     )
-                    if stagnation_counter > 50:
-                        # Сильный застой - резкое увеличение мутаций
+                else:
+                    stagnation_counter += 1
+                    # Если застой, увеличить разнообразие мутаций
+                    if stagnation_counter > 20:
                         current_mutation_std = min(
                             self.config.get('max_mutation_std', 2.0),
-                            current_mutation_std * 1.5
+                            current_mutation_std * 1.1
                         )
-            
-            progress_log.append(
-                f"Поколение {self.generation}: Лучшая={best.fitness:.10f}, Средняя={avg_fitness:.10f}, "
-                f"Мутация={current_mutation_std:.4f}"
-            )
+                        if stagnation_counter > 50:
+                            # Сильный застой - резкое увеличение мутаций
+                            current_mutation_std = min(
+                                self.config.get('max_mutation_std', 2.0),
+                                current_mutation_std * 1.5
+                            )
+                
+                progress_log.append(
+                    f"Поколение {self.generation}: Лучшая={best.fitness:.10f}, Средняя={avg_fitness:.10f}, "
+                    f"Мутация={current_mutation_std:.4f}"
+                )
         
         return progress_log
     
@@ -778,7 +782,12 @@ def wait_for_key():
         msvcrt.getch()
     else:
         fd = sys.stdin.fileno()
-        old_settings = termios.tcgetattr(fd)
+        try:
+            old_settings = termios.tcgetattr(fd)
+        except termios.error:
+            # Неинтерактивный режим (пайп, редирект) - просто читаем строку
+            sys.stdin.read(1)
+            return
         try:
             tty.setraw(fd)
             sys.stdin.read(1)
@@ -827,10 +836,19 @@ def run_evolution(pop_manager: PopulationManager):
     print(f"\nЗапуск эволюции на {num_gens} поколений...")
     print("-" * 60)
     
-    progress = pop_manager.evolve_generation(num_gens)
+    # Определяем интервал вывода прогресса
+    if num_gens > 1000:
+        print_interval = num_gens // 100  # Выводить каждые 1% прогресса
+    elif num_gens > 500:
+        print_interval = 10
+    else:
+        print_interval = 1
+    
+    progress = pop_manager.evolve_generation(num_gens, print_interval=print_interval)
     
     for log_entry in progress:
         print(log_entry)
+        sys.stdout.flush()  # Принудительная запись в stdout
     
     print("-" * 60)
     best = pop_manager.get_best()
