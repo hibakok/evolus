@@ -246,7 +246,8 @@ class Individual:
     
     def forward_fast(self, inputs: List[float]) -> List[float]:
         """Оптимизированный forward pass с использованием кэша связей.
-        Поддерживает рекуррентные связи для универсальности аппроксимации."""
+        Поддерживает любые связи между нейронами (включая саморекуррентные).
+        Все связи эволюционируют без ограничений - нет заранее заданных конструкций."""
         self._rebuild_cache()
         
         # Инициализировать значения нейронов
@@ -268,8 +269,8 @@ class Individual:
         # Удалить смещение из скрытых (оно уже установлено)
         hidden = [h for h in hidden if h != bias_id]
         
-        # Оптимизированный forward pass с кэшем и поддержкой рекуррентных связей
-        # Увеличено количество итераций для лучшей обработки рекуррентных связей
+        # Оптимизированный forward pass с кэшем и поддержкой любых связей
+        # Увеличено количество итераций для сходимости сетей со сложными связями
         max_iterations = 20
         for iteration in range(max_iterations):
             changed = False
@@ -291,12 +292,12 @@ class Individual:
                 
                 new_value = act_func(total)
                 
-                # Используем более плавное обновление для рекуррентных сетей
+                # Используем более плавное обновление для стабильности сетей с любыми связями
                 if neuron_id not in neuron_values:
                     neuron_values[neuron_id] = new_value
                     changed = True
                 elif abs(neuron_values[neuron_id] - new_value) > 1e-12:
-                    # Плавное обновление для стабильности рекуррентных сетей
+                    # Плавное обновление для стабильности
                     neuron_values[neuron_id] = 0.7 * neuron_values[neuron_id] + 0.3 * new_value
                     changed = True
             
@@ -461,22 +462,22 @@ class Mutator:
         Применяет мутации к индивиду.
         Мутации применяются как последовательность минимальных изменений:
         - добавление/удаление нейрона
-        - добавление/удаление связи между нейронами
+        - добавление/удаление связи между любыми двумя нейронами
         - изменение веса связи нейронов
         - изменение биаса нейрона
         - изменение функции активации
-        - добавление рекуррентной связи
         - изменение параметра нейрона
         
         Масштаб мутаций определяется количеством одновременных случайных мелких мутаций (num_mutations).
         Для максимальной универсальности аппроксиматора добавлены новые типы мутаций.
+        Все связи между нейронами равноправны и эволюционируют без ограничений.
         """
         mutant = individual.clone()
         
         for _ in range(num_mutations):
             # Выбираем случайный тип минимальной мутации с равной вероятностью
-            # Расширено до 9 типов мутаций для большей универсальности аппроксиматора
-            mutation_choice = random.randint(0, 8)
+            # Расширено до 8 типов мутаций для большей универсальности аппроксиматора
+            mutation_choice = random.randint(0, 7)
             
             if mutation_choice == 0:
                 # Изменение веса связи
@@ -500,9 +501,6 @@ class Mutator:
                 # Изменение функции активации (новая мощная мутация)
                 self._mutate_activation_fast(mutant)
             elif mutation_choice == 7:
-                # Добавление рекуррентной связи (для памяти и временных зависимостей)
-                self._add_recurrent_connection(mutant)
-            elif mutation_choice == 8:
                 # Мутация нескольких весов одновременно (крупная мутация)
                 self._multi_weight_mutation(mutant)
         
@@ -529,36 +527,28 @@ class Mutator:
         neuron.bias += random.gauss(0, self.config.get('weight_mutation_std', 0.5))
     
     def _add_connection_fast(self, individual: Individual):
+        """Добавляет связь между любыми двумя нейронами.
+        Все связи равноправны - нет разделения на рекуррентные и обычные.
+        Связи не дублируются - проверяется уникальность пары (from_neuron, to_neuron)."""
         if len(individual.neurons) < 2:
             return
         
         neurons = list(individual.neurons.keys())
-        input_neurons = list(range(individual.input_size))
-        output_neurons = list(range(individual.input_size, individual.input_size + individual.output_size))
-        hidden_neurons = [n for n in neurons if n not in input_neurons and n not in output_neurons]
         
         # Быстрое создание множества для проверки существующих связей
         existing = {(c.from_neuron, c.to_neuron) for c in individual.connections}
         
         max_attempts = 50
         for _ in range(max_attempts):
-            r = random.random()
+            # Выбираем любые два разных нейрона случайным образом
+            from_neuron = random.choice(neurons)
+            to_neuron = random.choice(neurons)
             
-            if r < 0.4 and hidden_neurons:
-                from_neuron = random.choice(input_neurons)
-                to_neuron = random.choice(hidden_neurons)
-            elif r < 0.8 and hidden_neurons:
-                from_neuron = random.choice(hidden_neurons)
-                to_neuron = random.choice(output_neurons)
-            elif r < 0.9 and hidden_neurons and len(hidden_neurons) > 1:
-                h1, h2 = random.sample(hidden_neurons, 2)
-                from_neuron, to_neuron = h1, h2
-            else:
-                from_neuron = random.choice(neurons)
-                to_neuron = random.choice(neurons)
-                if from_neuron == to_neuron:
-                    continue
+            # Не допускаем связей нейрона с самим собой через эту функцию
+            if from_neuron == to_neuron:
+                continue
             
+            # Проверяем, что такой связи ещё нет
             if (from_neuron, to_neuron) not in existing:
                 individual.connections.append(Connection(from_neuron, to_neuron, random.gauss(0, 1.0)))
                 return
@@ -614,30 +604,6 @@ class Mutator:
         current = individual.neurons[neuron_id].activation
         new_activations = [a for a in self._activation_list if a != current]
         individual.neurons[neuron_id].activation = random.choice(new_activations)
-    
-    def _add_recurrent_connection(self, individual: Individual):
-        """Добавляет рекуррентную связь (нейрон на себя или между скрытыми нейронами)
-        Это критически важно для универсальности аппроксиматора, позволяя обрабатывать
-        временные зависимости и последовательности."""
-        hidden = list(individual.get_hidden_neurons())
-        if len(hidden) < 1:
-            return
-        
-        # Быстрое создание множества для проверки существующих связей
-        existing = {(c.from_neuron, c.to_neuron) for c in individual.connections}
-        
-        # С вероятностью 50% добавляем рекуррентную связь на себя
-        if random.random() < 0.5 and hidden:
-            neuron_id = random.choice(hidden)
-            if (neuron_id, neuron_id) not in existing:
-                weight = random.gauss(0, 0.5)
-                individual.connections.append(Connection(neuron_id, neuron_id, weight))
-        elif len(hidden) > 1:
-            # Добавляем связь между двумя скрытыми нейронами в обоих направлениях
-            h1, h2 = random.sample(hidden, 2)
-            if (h1, h2) not in existing:
-                weight = random.gauss(0, 0.5)
-                individual.connections.append(Connection(h1, h2, weight))
     
     def _multi_weight_mutation(self, individual: Individual):
         """Мутация нескольких весов одновременно - более крупная мутация
@@ -820,18 +786,21 @@ class PopulationManager:
                 weight = random.gauss(0, 0.5)
                 individual.connections.append(Connection(bias_id, out_id, weight))
             
-            # Add MORE random recurrent connections between hidden neurons for better universality
-            for i, h1 in enumerate(hidden_ids):
-                for h2 in hidden_ids:
-                    if h1 != h2 and random.random() < 0.4:  # Увеличена вероятность рекуррентных связей
-                        weight = random.gauss(0, 0.5)
-                        individual.connections.append(Connection(h1, h2, weight))
+            # Add random connections between all neurons (including self-connections)
+            # Все связи равноправны и могут быть в любом направлении
+            existing = {(c.from_neuron, c.to_neuron) for c in individual.connections}
+            all_neurons = list(individual.neurons.keys())
             
-            # Add self-recurrent connections (критически важно для универсальности)
-            for hid_id in hidden_ids:
-                if random.random() < 0.5:  # 50% вероятность саморекуррентной связи
-                    weight = random.gauss(0, 0.3)
-                    individual.connections.append(Connection(hid_id, hid_id, weight))
+            # Добавляем случайные связи между всеми нейронами
+            for _ in range(len(all_neurons) * 2):  # Достаточно связей для начальной связности
+                from_neuron = random.choice(all_neurons)
+                to_neuron = random.choice(all_neurons)
+                
+                # Разрешаем связи нейрона с самим собой (саморекуррентные)
+                if (from_neuron, to_neuron) not in existing:
+                    weight = random.gauss(0, 0.5)
+                    individual.connections.append(Connection(from_neuron, to_neuron, weight))
+                    existing.add((from_neuron, to_neuron))
             
             individual.fitness = float('inf')
             individual.complexity = len(individual.connections)
