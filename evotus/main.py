@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 Evotus - Универсальная нейронная сеть с эволюционными стратегиями
+Оптимизированная версия для максимальной скорости эволюции
 """
 
 import random
@@ -33,11 +34,21 @@ class ActivationFunction(Enum):
     LINEAR = "linear"
     STEP = "step"
 
+# Предварительно вычисленные таблицы для активаций (ускорение)
+_SIGMOID_TABLE_SIZE = 20000
+_SIGMOID_MIN = -10.0
+_SIGMOID_MAX = 10.0
+_SIGMOID_STEP = (_SIGMOID_MAX - _SIGMOID_MIN) / _SIGMOID_TABLE_SIZE
+_SIGMOID_TABLE = [1.0 / (1.0 + math.exp(-(_SIGMOID_MIN + i * _SIGMOID_STEP))) 
+                  for i in range(_SIGMOID_TABLE_SIZE)]
+
 def sigmoid(x: float) -> float:
-    try:
-        return 1.0 / (1.0 + math.exp(-x))
-    except OverflowError:
-        return 0.0 if x < 0 else 1.0
+    if x < _SIGMOID_MIN:
+        return 0.0
+    if x > _SIGMOID_MAX:
+        return 1.0
+    idx = int((x - _SIGMOID_MIN) / _SIGMOID_STEP)
+    return _SIGMOID_TABLE[idx]
 
 def tanh_act(x: float) -> float:
     return math.tanh(x)
@@ -64,7 +75,7 @@ class Neuron:
     id: int
     activation: ActivationFunction = ActivationFunction.SIGMOID
 
-@dataclass
+@dataclass(slots=True)
 class Connection:
     from_neuron: int
     to_neuron: int
@@ -78,14 +89,29 @@ class Individual:
     complexity: int = 0
     input_size: int = 0
     output_size: int = 0
+    # Кэшированные структуры для ускорения forward pass
+    _conn_by_target: Dict[int, List[Tuple[int, float]]] = field(default_factory=dict, repr=False, init=False)
+    _needs_rebuild: bool = field(default=True, repr=False, init=False)
     
     def __post_init__(self):
         self.complexity = len(self.connections)
+        self._needs_rebuild = True
+    
+    def _rebuild_cache(self):
+        """Построить кэш связей по целевым нейронам для быстрого доступа"""
+        if not self._needs_rebuild:
+            return
+        self._conn_by_target = {}
+        for conn in self.connections:
+            if conn.to_neuron not in self._conn_by_target:
+                self._conn_by_target[conn.to_neuron] = []
+            self._conn_by_target[conn.to_neuron].append((conn.from_neuron, conn.weight))
+        self._needs_rebuild = False
     
     def clone(self) -> 'Individual':
         new_neurons = {k: Neuron(v.id, v.activation) for k, v in self.neurons.items()}
         new_connections = [Connection(c.from_neuron, c.to_neuron, c.weight) for c in self.connections]
-        return Individual(
+        clone = Individual(
             neurons=new_neurons,
             connections=new_connections,
             fitness=self.fitness,
@@ -93,6 +119,8 @@ class Individual:
             input_size=self.input_size,
             output_size=self.output_size
         )
+        clone._needs_rebuild = True
+        return clone
     
     def get_input_neurons(self) -> Set[int]:
         return set(range(self.input_size))
@@ -105,6 +133,13 @@ class Individual:
         return all_neurons - self.get_input_neurons() - self.get_output_neurons()
     
     def forward(self, inputs: List[float]) -> List[float]:
+        # Быстрый forward pass с использованием кэша связей
+        return self.forward_fast(inputs)
+    
+    def forward_fast(self, inputs: List[float]) -> List[float]:
+        """Оптимизированный forward pass с использованием кэша связей"""
+        self._rebuild_cache()
+        
         # Инициализировать значения нейронов
         neuron_values: Dict[int, float] = {}
         
@@ -117,17 +152,18 @@ class Individual:
         if bias_id in self.neurons:
             neuron_values[bias_id] = 1.0
         
-        # Получить топологический порядок для скрытых и выходных нейронов
+        # Получить списки нейронов
         hidden = list(self.get_hidden_neurons())
         output = list(self.get_output_neurons())
         
         # Удалить смещение из скрытых (оно уже установлено)
         hidden = [h for h in hidden if h != bias_id]
         
-        # Простая итерация (может потребоваться несколько проходов для рекуррентных сетей)
+        # Оптимизированный forward pass с кэшем
         max_iterations = 10
         for _ in range(max_iterations):
             changed = False
+            
             # Обработать все не-входные нейроны
             for neuron_id in hidden + output:
                 if neuron_id not in self.neurons:
@@ -136,12 +172,12 @@ class Individual:
                 neuron = self.neurons[neuron_id]
                 act_func = ACTIVATION_FUNCTIONS[neuron.activation]
                 
-                # Суммировать взвешенные входы
+                # Использовать кэш для быстрого доступа к связям
                 total = 0.0
-                for conn in self.connections:
-                    if conn.to_neuron == neuron_id:
-                        if conn.from_neuron in neuron_values:
-                            total += conn.weight * neuron_values[conn.from_neuron]
+                if neuron_id in self._conn_by_target:
+                    for from_neuron, weight in self._conn_by_target[neuron_id]:
+                        if from_neuron in neuron_values:
+                            total += weight * neuron_values[from_neuron]
                 
                 new_value = act_func(total)
                 
@@ -301,158 +337,146 @@ class ConfigManager:
 class Mutator:
     def __init__(self, config: ConfigManager):
         self.config = config
+        # Кэшируем списки для ускорения
+        self._activation_list = list(ActivationFunction)
     
     def mutate(self, individual: Individual, num_mutations: int) -> Individual:
         mutant = individual.clone()
         
+        # Предварительно вычисляем пороги
+        rate_weight = self.config.get('mutation_rate_weight')
+        rate_conn = rate_weight + self.config.get('mutation_rate_connection')
+        rate_neuron = rate_conn + self.config.get('mutation_rate_neuron')
+        weight_std = self.config.get('weight_mutation_std')
+        
         for _ in range(num_mutations):
             mutation_type = random.random()
             
-            if mutation_type < self.config.get('mutation_rate_weight'):
-                self._mutate_weight(mutant)
-            elif mutation_type < self.config.get('mutation_rate_weight') + self.config.get('mutation_rate_connection'):
+            if mutation_type < rate_weight:
+                self._mutate_weight_fast(mutant, weight_std)
+            elif mutation_type < rate_conn:
                 if random.random() < 0.5:
-                    self._add_connection(mutant)
+                    self._add_connection_fast(mutant)
                 else:
-                    self._remove_connection(mutant)
-            elif mutation_type < self.config.get('mutation_rate_weight') + self.config.get('mutation_rate_connection') + self.config.get('mutation_rate_neuron'):
+                    self._remove_connection_fast(mutant)
+            elif mutation_type < rate_neuron:
                 if random.random() < 0.5:
-                    self._add_neuron(mutant)
+                    self._add_neuron_fast(mutant)
                 else:
-                    self._remove_neuron(mutant)
+                    self._remove_neuron_fast(mutant)
             else:
-                self._mutate_activation(mutant)
+                self._mutate_activation_fast(mutant)
         
         mutant.complexity = len(mutant.connections)
+        mutant._needs_rebuild = True  # Пометить для перестройки кэша
         return mutant
     
-    def _mutate_weight(self, individual: Individual):
+    def _mutate_weight_fast(self, individual: Individual, weight_std: float):
         if not individual.connections:
             return
-        
         conn = random.choice(individual.connections)
-        delta = random.gauss(0, self.config.get('weight_mutation_std'))
-        conn.weight += delta
+        conn.weight += random.gauss(0, weight_std)
     
-    def _add_connection(self, individual: Individual):
+    def _add_connection_fast(self, individual: Individual):
         if len(individual.neurons) < 2:
             return
         
         neurons = list(individual.neurons.keys())
-        input_neurons = set(range(individual.input_size))
-        output_neurons = set(range(individual.input_size, individual.input_size + individual.output_size))
+        input_neurons = list(range(individual.input_size))
+        output_neurons = list(range(individual.input_size, individual.input_size + individual.output_size))
         hidden_neurons = [n for n in neurons if n not in input_neurons and n not in output_neurons]
         
-        # Приоритет 1: Связь вход -> скрытый или скрытый -> выход
-        # Это критически важно для XOR и других нелинейных задач
-        max_attempts = 100
+        # Быстрое создание множества для проверки существующих связей
+        existing = {(c.from_neuron, c.to_neuron) for c in individual.connections}
+        
+        max_attempts = 50
         for _ in range(max_attempts):
             r = random.random()
             
             if r < 0.4 and hidden_neurons:
-                # Вход -> Скрытый
-                from_neuron = random.choice(list(input_neurons))
+                from_neuron = random.choice(input_neurons)
                 to_neuron = random.choice(hidden_neurons)
             elif r < 0.8 and hidden_neurons:
-                # Скрытый -> Выход
                 from_neuron = random.choice(hidden_neurons)
-                to_neuron = random.choice(list(output_neurons))
+                to_neuron = random.choice(output_neurons)
             elif r < 0.9 and hidden_neurons and len(hidden_neurons) > 1:
-                # Скрытый -> Скрытый (рекуррентность)
                 h1, h2 = random.sample(hidden_neurons, 2)
                 from_neuron, to_neuron = h1, h2
             else:
-                # Любая связь
                 from_neuron = random.choice(neurons)
                 to_neuron = random.choice(neurons)
                 if from_neuron == to_neuron:
                     continue
             
-            # Проверить, существует ли уже связь
-            exists = any(
-                conn.from_neuron == from_neuron and conn.to_neuron == to_neuron 
-                for conn in individual.connections
-            )
-            
-            if not exists:
-                weight = random.gauss(0, 1.0)
-                individual.connections.append(Connection(from_neuron, to_neuron, weight))
+            if (from_neuron, to_neuron) not in existing:
+                individual.connections.append(Connection(from_neuron, to_neuron, random.gauss(0, 1.0)))
                 return
     
-    def _remove_connection(self, individual: Individual):
-        if len(individual.connections) <= 5:  # Оставить минимум связей
+    def _remove_connection_fast(self, individual: Individual):
+        if len(individual.connections) <= 5:
             return
         
-        # Не удалять критические связи (вход->скрытый, скрытый->выход) если связей мало
-        input_neurons = set(range(individual.input_size))
-        output_neurons = set(range(individual.input_size, individual.input_size + individual.output_size))
-        hidden_neurons = set(n for n in individual.neurons if n not in input_neurons and n not in output_neurons)
+        input_set = set(range(individual.input_size))
+        output_set = set(range(individual.input_size, individual.input_size + individual.output_size))
+        hidden_set = set(n for n in individual.neurons if n not in input_set and n not in output_set)
         
-        # Найти некритичные связи (скрытый->скрытый или лишние)
-        removable = []
-        for conn in individual.connections:
-            # Всегда можно удалить скрытый->скрытый
-            if conn.from_neuron in hidden_neurons and conn.to_neuron in hidden_neurons:
-                removable.append(conn)
-            # Можно удалить вход->выход (прямая связь не нужна для XOR)
-            elif conn.from_neuron in input_neurons and conn.to_neuron in output_neurons:
-                removable.append(conn)
+        removable = [c for c in individual.connections 
+                     if (c.from_neuron in hidden_set and c.to_neuron in hidden_set) or
+                        (c.from_neuron in input_set and c.to_neuron in output_set)]
         
         if removable:
             individual.connections.remove(random.choice(removable))
-        elif individual.connections:
-            # Если нет "безопасных" связей, удалить любую кроме минимума
+        else:
             individual.connections.pop(random.randrange(len(individual.connections)))
     
-    def _add_neuron(self, individual: Individual):
-        # Найти свободный ID нейрона
+    def _add_neuron_fast(self, individual: Individual):
         existing_ids = set(individual.neurons.keys())
-        new_id = 0
-        while new_id in existing_ids:
-            new_id += 1
+        new_id = max(existing_ids) + 1 if existing_ids else 0
         
-        # Не добавлять нейроны в диапазон входа/выхода
         input_range = set(range(individual.input_size))
         output_range = set(range(individual.input_size, individual.input_size + individual.output_size))
         
-        if new_id in input_range or new_id in output_range:
-            new_id = max(existing_ids) + 1
-            while new_id in input_range or new_id in output_range:
-                new_id += 1
+        while new_id in input_range or new_id in output_range:
+            new_id += 1
         
-        activation = random.choice(list(ActivationFunction))
-        individual.neurons[new_id] = Neuron(new_id, activation)
+        individual.neurons[new_id] = Neuron(new_id, random.choice(self._activation_list))
     
-    def _remove_neuron(self, individual: Individual):
+    def _remove_neuron_fast(self, individual: Individual):
         hidden = individual.get_hidden_neurons()
         if not hidden:
             return
         
         neuron_id = random.choice(list(hidden))
-        
-        # Удалить все связи, затрагивающие этот нейрон
-        individual.connections = [
-            c for c in individual.connections 
-            if c.from_neuron != neuron_id and c.to_neuron != neuron_id
-        ]
-        
+        individual.connections = [c for c in individual.connections 
+                                   if c.from_neuron != neuron_id and c.to_neuron != neuron_id]
         del individual.neurons[neuron_id]
     
-    def _mutate_activation(self, individual: Individual):
+    def _mutate_activation_fast(self, individual: Individual):
         hidden = individual.get_hidden_neurons()
         if not hidden:
             return
         
         neuron_id = random.choice(list(hidden))
-        activations = list(ActivationFunction)
         current = individual.neurons[neuron_id].activation
-        new_activations = [a for a in activations if a != current]
+        new_activations = [a for a in self._activation_list if a != current]
         individual.neurons[neuron_id].activation = random.choice(new_activations)
 
 
 class FitnessCalculator:
     def __init__(self, data_manager: DataManager):
         self.data_manager = data_manager
+        # Кэшируем данные для быстрого доступа
+        self._cached_data = None
+    
+    def _prepare_data(self):
+        """Подготовить кэшированные данные для быстрого вычисления fitness"""
+        if self._cached_data is not None:
+            return self._cached_data
+        
+        self._cached_data = []
+        for inputs, expected_outputs in self.data_manager.data:
+            self._cached_data.append((inputs, expected_outputs))
+        return self._cached_data
     
     def calculate(self, individual: Individual) -> Tuple[float, int]:
         """
@@ -465,16 +489,41 @@ class FitnessCalculator:
         if not self.data_manager.data:
             return float('inf'), individual.complexity
         
+        # Использовать кэшированные данные
+        data = self._cached_data if self._cached_data else self._prepare_data()
+        
         total_error = 0.0
         
-        for inputs, expected_outputs in self.data_manager.data:
-            actual_outputs = individual.forward(inputs)
+        # Быстрый forward pass с кэшем
+        individual._rebuild_cache()
+        
+        for inputs, expected_outputs in data:
+            actual_outputs = individual.forward_fast(inputs)
             
             for actual, expected in zip(actual_outputs, expected_outputs):
                 diff = actual - expected
                 total_error += diff * diff
         
         return total_error, individual.complexity
+    
+    def calculate_batch(self, individuals: List[Individual]) -> List[Tuple[float, int]]:
+        """Пакетное вычисление fitness для нескольких особей"""
+        results = []
+        data = self._cached_data if self._cached_data else self._prepare_data()
+        
+        for ind in individuals:
+            ind._rebuild_cache()
+            total_error = 0.0
+            
+            for inputs, expected_outputs in data:
+                actual_outputs = ind.forward_fast(inputs)
+                for actual, expected in zip(actual_outputs, expected_outputs):
+                    diff = actual - expected
+                    total_error += diff * diff
+            
+            results.append((total_error, ind.complexity))
+        
+        return results
     
     def compare_fitness(self, ind1: Individual, ind2: Individual) -> int:
         """
