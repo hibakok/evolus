@@ -7,7 +7,7 @@ on:
     branches: [ main, master ]
 
 jobs:
-  build-and-test:
+  build:
     runs-on: windows-latest
     
     steps:
@@ -16,29 +16,12 @@ jobs:
     - name: Setup .NET Framework
       uses: microsoft/setup-msbuild@v2
     
-    - name: Setup NuGet
-      uses: NuGet/setup-nuget@v2
-    
     - name: Restore dependencies
-      run: nuget restore evolus/evolus.sln
+      run: dotnet restore evolus/evolus.sln
     
     - name: Build
-      run: msbuild evolus/evolus.sln /p:Configuration=Release /t:Rebuild /verbosity:minimal
+      run: dotnet build evolus/evolus.sln --no-restore --configuration Release
     
-    - name: Install .NET SDK for testing
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: '8.0.x'
-    
-    - name: Run tests
-      run: dotnet test evolus/tests/evolus.Tests/evolus.Tests.csproj --configuration Release --verbosity normal --logger "console;verbosity=detailed"
-    
-    - name: Upload test results
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: test-results
-        path: |
-          **/*.trx
-          **/TestResults/*.xml
+    - name: Test
+      run: dotnet test evolus/evolus.sln --no-build --configuration Release --verbosity normal
 
