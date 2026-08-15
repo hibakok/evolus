@@ -1,0 +1,32 @@
+<Window x:Class="evolus.UI.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Evolus - Evolutionary Neural Network" Height="500" Width="700"
+        WindowStartupLocation="CenterScreen">
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Margin="0,0,0,20">
+            <TextBlock Text="Evolus" FontSize="24" FontWeight="Bold" HorizontalAlignment="Center" Margin="0,0,0,10"/>
+            <TextBlock Text="Universal Evolutionary Neural Network" FontSize="12" HorizontalAlignment="Center" FontStyle="Italic"/>
+        </StackPanel>
+
+        <StackPanel Grid.Row="1" VerticalAlignment="Center" HorizontalAlignment="Center">
+            <Button Content="Эволюция" Width="200" Height="40" Margin="0,10" Click="BtnEvolve_Click"/>
+            <Button Content="Протестировать текущую особь" Width="200" Height="40" Margin="0,10" Click="BtnTest_Click"/>
+            <Button Content="Загрузить данные" Width="200" Height="40" Margin="0,10" Click="BtnLoadData_Click"/>
+            <Button Content="Сохранить лучшую сеть" Width="200" Height="40" Margin="0,10" Click="BtnSaveNetwork_Click"/>
+            <Button Content="Настройки" Width="200" Height="40" Margin="0,10" Click="BtnSettings_Click"/>
+        </StackPanel>
+
+        <StatusBar Grid.Row="2">
+            <StatusBarItem>
+                <TextBlock x:Name="StatusText" Text="Готов"/>
+            </StatusBarItem>
+        </StatusBar>
+    </Grid>
+</Window>

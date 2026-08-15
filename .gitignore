@@ -1,13 +1,39 @@
 ```
 # Build results
-bin/
-obj/
+**/bin/
+**/obj/
+**/out/
 
 # User-specific files
 .vs/
-.vim/
+*.user
+*.userosscache
+*.suo
 
-# Environment specific files
+# Build results
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+build/
+bld/
+[Bb]in/
+[Oo]bj/
+
+# Visual Studio Code
+.vscode/
+
+# NuGet Packages
+*.nupkg
+packages/
+
+# Test results
+testresults/
+*.trx
+
+# Environment specific settings
 .env
 .env.local
 *.env.*
@@ -15,17 +41,4 @@ obj/
 # OS generated files
 .DS_Store
 Thumbs.db
-
-# Logs
-*.log
-
-# Compiled files
-*.dll
-*.exe
-*.pdb
-*.so
-*.dylib
-
-# Package manager cache
-.nuget/
 ```
