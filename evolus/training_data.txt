@@ -1,0 +1,9 @@
+# Evolus Training Data
+# Input dimension: 2, Output dimension: 2
+# Format: input1 input2 ... | output1 output2 ...
+
+# XOR problem example
+0 0 | 0 1
+0 1 | 1 0
+1 0 | 1 0
+1 1 | 0 1
