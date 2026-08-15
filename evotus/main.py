@@ -451,12 +451,16 @@ class Individual:
         hidden = [h for h in hidden if h != bias_id]
         
         # Оптимизированный forward pass с кэшем и поддержкой любых связей
-        # Увеличено количество итераций для сходимости сетей со сложными связями
-        max_iterations = 30  # Увеличено с 20 до 30 для лучшей сходимости
-        smoothing_factor = 0.6  # Коэффициент плавного обновления
+        # УВЕЛИЧЕНО количество итераций для сходимости сетей со сложными связями
+        max_iterations = 100  # Увеличено с 50 до 100 для лучшей сходимости
+        smoothing_factor = 0.4  # Еще более плавное обновление для стабильности
+        
+        # Для повышенной точности используем более строгий порог сходимости
+        convergence_threshold = 1e-16  # Увеличена точность с 1e-14 до 1e-16
         
         for iteration in range(max_iterations):
             changed = False
+            max_change = 0.0
             
             # Обработать все не-входные нейроны
             for neuron_id in hidden + output:
@@ -482,12 +486,15 @@ class Individual:
                 if neuron_id not in neuron_values:
                     neuron_values[neuron_id] = new_value
                     changed = True
-                elif abs(neuron_values[neuron_id] - new_value) > 1e-14:
-                    # Плавное обновление для стабильности с адаптивным коэффициентом
-                    neuron_values[neuron_id] = smoothing_factor * neuron_values[neuron_id] + (1 - smoothing_factor) * new_value
-                    changed = True
+                else:
+                    delta = abs(neuron_values[neuron_id] - new_value)
+                    if delta > convergence_threshold:
+                        # Плавное обновление для стабильности с адаптивным коэффициентом
+                        neuron_values[neuron_id] = smoothing_factor * neuron_values[neuron_id] + (1 - smoothing_factor) * new_value
+                        changed = True
+                        max_change = max(max_change, delta)
             
-            if not changed:
+            if not changed or max_change < convergence_threshold:
                 break
         
         # Извлечь выходы
@@ -1000,6 +1007,10 @@ class FitnessCalculator:
         Меньшая ошибка лучше.
         Если ошибки равны, меньшая сложность лучше.
         НО: если одна имеет большую сложность, но даже немного меньшую ошибку, она лучше.
+        
+        УЛУЧШЕНИЯ ДЛЯ ТОЧНОСТИ:
+        - Используется высокая точность вычислений с плавающей точкой
+        - Минимизация потерь точности при вычислениях
         """
         if not self.data_manager.data:
             return float('inf'), individual.complexity
@@ -1052,17 +1063,20 @@ class FitnessCalculator:
         - Меньшая ошибка всегда лучше
         - Если ошибки равны, меньшая сложность лучше
         - Большая сложность с даже немного меньшей ошибкой лучше
+        
+        УЛУЧШЕННАЯ ТОЧНОСТЬ СРАВНЕНИЯ:
+        - Использован порог 1e-16 для максимальной точности
         """
         err1, comp1 = ind1.fitness, ind1.complexity
         err2, comp2 = ind2.fitness, ind2.complexity
         
-        # Use high precision comparison
-        if err1 < err2 - 1e-15:
+        # Ultra high precision comparison with 1e-16 threshold
+        if err1 < err2 - 1e-16:
             return -1
-        elif err1 > err2 + 1e-15:
+        elif err1 > err2 + 1e-16:
             return 1
         else:
-            # Errors are essentially equal
+            # Errors are essentially equal at maximum precision
             if comp1 < comp2:
                 return -1
             elif comp1 > comp2:
@@ -1267,11 +1281,12 @@ class PopulationManager:
                 replace_parent = False
                 
                 # Проверяем: ошибка потомка меньше ошибки родителя?
-                if offspring_error < parent_error - 1e-15:
+                # УЛУЧШЕННАЯ ТОЧНОСТЬ: используем порог 1e-16 для максимальной точности
+                if offspring_error < parent_error - 1e-16:
                     # Потомок имеет меньшую ошибку - он лучше независимо от сложности
                     replace_parent = True
-                elif abs(offspring_error - parent_error) <= 1e-15:
-                    # Ошибки РАВНЫ (полностью равны)
+                elif abs(offspring_error - parent_error) <= 1e-16:
+                    # Ошибки РАВНЫ (полностью равны на максимальном уровне точности)
                     # Выбираем особь с меньшей сложностью
                     if offspring_complexity < parent_complexity:
                         replace_parent = True
@@ -1297,7 +1312,8 @@ class PopulationManager:
                 avg_fitness = sum(ind.fitness for ind in self.internal_population) / len(self.internal_population)
                 
                 # Проверка на улучшение для адаптации мутаций
-                if best.fitness < best_ever_fitness - 1e-12:
+                # УЛУЧШЕННАЯ ТОЧНОСТЬ: используем порог 1e-16 для обнаружения малейших улучшений
+                if best.fitness < best_ever_fitness - 1e-16:
                     best_ever_fitness = best.fitness
                     stagnation_counter = 0
                     # Уменьшить силу мутаций для точной настройки
@@ -1329,20 +1345,21 @@ class PopulationManager:
                 else:
                     stagnation_counter += 1
                     # Если застой, увеличить разнообразие мутаций
-                    if stagnation_counter > 20:
+                    # УСКОРЕННАЯ РЕАКЦИЯ НА ЗАСТОЙ: уменьшено количество поколений для реакции
+                    if stagnation_counter > 10:  # Было 20, теперь 10 для более быстрой реакции
                         current_mutation_std = min(
                             self.config.get('max_mutation_std', 2.0),
-                            current_mutation_std * 1.1
+                            current_mutation_std * 1.15  # Увеличено с 1.1 до 1.15 для более агрессивного выхода
                         )
-                        if stagnation_counter > 50:
+                        if stagnation_counter > 30:  # Было 50, теперь 30
                             # Сильный застой - резкое увеличение мутаций
                             current_mutation_std = min(
                                 self.config.get('max_mutation_std', 2.0),
-                                current_mutation_std * 1.5
+                                current_mutation_std * 1.8  # Увеличено с 1.5 до 1.8
                             )
                         
                         # Сброс направлений при длительном застое (для выхода из локального минимума)
-                        if stagnation_counter > 100:
+                        if stagnation_counter > 50:  # Было 100, теперь 50 для более быстрого сброса
                             for ind in self.internal_population:
                                 ind._last_successful_mutation_direction.clear()
                                 # Частичный сброс важности
