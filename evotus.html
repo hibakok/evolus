@@ -391,6 +391,13 @@ class NeuralNetwork {
         this.fitness = Infinity;
         this.error = Infinity;
         this.complexity = 0;
+        this.inputCount = 0;
+        this.outputCount = 0;
+    }
+
+    setInputOutputCounts(inputCount, outputCount) {
+        this.inputCount = inputCount;
+        this.outputCount = outputCount;
     }
 
     addNeuron(activationFunction = 'sigmoid') {
@@ -401,8 +408,41 @@ class NeuralNetwork {
         return id;
     }
 
+    isInputNeuron(id) {
+        return id < this.inputCount;
+    }
+
+    isOutputNeuron(id) {
+        if (this.outputCount > 0) {
+            return id >= this.neurons.length - this.outputCount;
+        }
+        // Если outputCount не установлен, считаем выходными нейроны без исходящих связей
+        let hasOutgoing = this.connections.some(c => c.fromId === id);
+        return !hasOutgoing;
+    }
+
+    getInputNeurons() {
+        const result = [];
+        for (let i = 0; i < this.inputCount && i < this.neurons.length; i++) {
+            result.push(i);
+        }
+        return result;
+    }
+
+    getOutputNeurons() {
+        const result = [];
+        const total = this.neurons.length;
+        for (let i = 0; i < this.outputCount && i < total; i++) {
+            result.push(total - this.outputCount + i);
+        }
+        return result;
+    }
+
     removeNeuron(id) {
         if (this.neurons.length <= 2) return false;
+        // Нельзя удалять входные или выходные нейроны
+        if (this.isInputNeuron(id) || this.isOutputNeuron(id)) return false;
+        
         this.neurons = this.neurons.filter(n => n.id !== id);
         this.connections = this.connections.filter(c => c.fromId !== id && c.toId !== id);
         this.reindexNeurons();
@@ -412,6 +452,8 @@ class NeuralNetwork {
     addConnection(fromId, toId, weight) {
         if (fromId === toId) return false;
         if (this.connections.some(c => c.fromId === fromId && c.toId === toId)) return false;
+        // Нельзя создавать связи от выходных к входным (чтобы избежать циклов)
+        if (this.isOutputNeuron(fromId) && this.isInputNeuron(toId)) return false;
         this.connections.push(new Connection(fromId, toId, weight));
         return true;
     }
@@ -451,24 +493,19 @@ class NeuralNetwork {
         if (neuronCount === 0) return [];
 
         const values = new Array(neuronCount).fill(0);
-        const outputIndices = [];
         
-        for (let i = 0; i < neuronCount; i++) {
-            let hasIncoming = this.connections.some(c => c.toId === i);
-            if (!hasIncoming) {
-                outputIndices.push(i);
-            }
+        // Устанавливаем значения входных нейронов
+        const inputNeurons = this.getInputNeurons();
+        for (let i = 0; i < Math.min(inputValues.length, inputNeurons.length); i++) {
+            values[inputNeurons[i]] = inputValues[i];
         }
 
-        const inputCount = Math.min(inputValues.length, outputIndices.length);
-        for (let i = 0; i < inputCount; i++) {
-            values[outputIndices[i]] = inputValues[i];
-        }
-
+        // Топологическая сортировка для правильного порядка вычислений
         const sortedNeurons = this.topologicalSort();
         
         for (const neuronIdx of sortedNeurons) {
-            if (outputIndices.includes(neuronIdx)) continue;
+            // Пропускаем входные нейроны - их значения уже установлены
+            if (this.isInputNeuron(neuronIdx)) continue;
             
             const neuron = this.neurons[neuronIdx];
             let sum = neuron.bias;
@@ -482,19 +519,13 @@ class NeuralNetwork {
             values[neuronIdx] = this.activate(sum, neuron.activationFunction);
         }
 
-        const outputNeuronIndices = [];
-        for (let i = 0; i < neuronCount; i++) {
-            let hasOutgoing = this.connections.some(c => c.fromId === i);
-            if (!hasOutgoing) {
-                outputNeuronIndices.push(i);
-            }
-        }
-
-        if (outputNeuronIndices.length === 0) {
+        // Получаем значения выходных нейронов
+        const outputNeurons = this.getOutputNeurons();
+        if (outputNeurons.length === 0) {
             return values.slice(0, 1);
         }
 
-        return outputNeuronIndices.map(idx => values[idx]);
+        return outputNeurons.map(idx => values[idx]);
     }
 
     topologicalSort() {
@@ -527,6 +558,7 @@ class NeuralNetwork {
 
     clone() {
         const cloned = new NeuralNetwork();
+        cloned.setInputOutputCounts(this.inputCount, this.outputCount);
         this.neurons.forEach(n => {
             const newId = cloned.addNeuron(n.activationFunction);
             cloned.neurons[newId].bias = n.bias;
@@ -539,6 +571,8 @@ class NeuralNetwork {
 
     serialize() {
         let data = `NEURONS:${this.neurons.length}\n`;
+        data += `INPUT_COUNT:${this.inputCount}\n`;
+        data += `OUTPUT_COUNT:${this.outputCount}\n`;
         this.neurons.forEach(n => {
             data += `${n.id}|${n.activationFunction}|${n.bias}\n`;
         });
@@ -553,6 +587,8 @@ class NeuralNetwork {
         const network = new NeuralNetwork();
         const lines = data.trim().split('\n');
         let mode = null;
+        let inputCount = 0;
+        let outputCount = 0;
 
         for (const line of lines) {
             if (line.startsWith('NEURONS:')) {
@@ -561,6 +597,12 @@ class NeuralNetwork {
                     network.addNeuron();
                 }
                 mode = 'neurons';
+            } else if (line.startsWith('INPUT_COUNT:')) {
+                inputCount = parseInt(line.split(':')[1]);
+                network.setInputOutputCounts(inputCount, outputCount);
+            } else if (line.startsWith('OUTPUT_COUNT:')) {
+                outputCount = parseInt(line.split(':')[1]);
+                network.setInputOutputCounts(inputCount, outputCount);
             } else if (line.startsWith('CONNECTIONS:')) {
                 mode = 'connections';
             } else if (mode === 'neurons' && line.includes('|')) {
@@ -599,9 +641,14 @@ class Mutator {
                     
                 case 1: // Add connection
                     if (mutated.neurons.length >= 2) {
-                        const fromId = Math.floor(Math.random() * mutated.neurons.length);
-                        const toId = Math.floor(Math.random() * mutated.neurons.length);
-                        mutated.addConnection(fromId, toId, (Math.random() - 0.5) * 2);
+                        let attempts = 0;
+                        let added = false;
+                        while (!added && attempts < 20) {
+                            const fromId = Math.floor(Math.random() * mutated.neurons.length);
+                            const toId = Math.floor(Math.random() * mutated.neurons.length);
+                            added = mutated.addConnection(fromId, toId, (Math.random() - 0.5) * 2);
+                            attempts++;
+                        }
                     }
                     break;
                     
@@ -618,33 +665,72 @@ class Mutator {
                         const func = functions[Math.floor(Math.random() * functions.length)];
                         const newId = mutated.addNeuron(func);
                         
-                        if (mutated.neurons.length > 1) {
-                            const targetId = Math.floor(Math.random() * newId);
-                            mutated.addConnection(targetId, newId, (Math.random() - 0.5) * 2);
-                            
-                            const outputId = Math.floor(Math.random() * newId);
-                            mutated.addConnection(newId, outputId, (Math.random() - 0.5) * 2);
+                        // Соединяем новый нейрон с существующими
+                        const totalNeurons = mutated.neurons.length;
+                        const inputCount = mutated.inputCount;
+                        const outputCount = mutated.outputCount;
+                        
+                        // Соединяем от случайного не-выходного нейрона к новому
+                        let potentialSources = [];
+                        for (let j = 0; j < totalNeurons - outputCount; j++) {
+                            potentialSources.push(j);
+                        }
+                        if (potentialSources.length > 0) {
+                            const sourceId = potentialSources[Math.floor(Math.random() * potentialSources.length)];
+                            mutated.addConnection(sourceId, newId, (Math.random() - 0.5) * 2);
+                        }
+                        
+                        // Соединяем от нового нейрона к случайному не-входному нейрону
+                        let potentialTargets = [];
+                        for (let j = inputCount; j < totalNeurons; j++) {
+                            potentialTargets.push(j);
+                        }
+                        if (potentialTargets.length > 0) {
+                            const targetId = potentialTargets[Math.floor(Math.random() * potentialTargets.length)];
+                            mutated.addConnection(newId, targetId, (Math.random() - 0.5) * 2);
                         }
                     }
                     break;
                     
                 case 4: // Remove neuron
                     if (mutated.neurons.length > 2) {
-                        const idToRemove = Math.floor(Math.random() * mutated.neurons.length);
-                        mutated.removeNeuron(idToRemove);
+                        // Пытаемся удалить только скрытый нейрон
+                        let attempts = 0;
+                        let removed = false;
+                        while (!removed && attempts < 10) {
+                            const idToRemove = Math.floor(Math.random() * mutated.neurons.length);
+                            removed = mutated.removeNeuron(idToRemove);
+                            attempts++;
+                        }
                     }
                     break;
                     
                 case 5: // Change activation function
                     if (mutated.neurons.length > 0) {
                         const functions = ['sigmoid', 'tanh', 'relu', 'linear'];
-                        const neuronIdx = Math.floor(Math.random() * mutated.neurons.length);
-                        const currentFunc = mutated.neurons[neuronIdx].activationFunction;
-                        let newFunc;
-                        do {
-                            newFunc = functions[Math.floor(Math.random() * functions.length)];
-                        } while (newFunc === currentFunc && functions.length > 1);
-                        mutated.neurons[neuronIdx].activationFunction = newFunc;
+                        // Меняем функцию активации только у скрытых нейронов
+                        let hiddenNeurons = [];
+                        for (let j = mutated.inputCount; j < mutated.neurons.length - mutated.outputCount; j++) {
+                            hiddenNeurons.push(j);
+                        }
+                        if (hiddenNeurons.length > 0) {
+                            const neuronIdx = hiddenNeurons[Math.floor(Math.random() * hiddenNeurons.length)];
+                            const currentFunc = mutated.neurons[neuronIdx].activationFunction;
+                            let newFunc;
+                            do {
+                                newFunc = functions[Math.floor(Math.random() * functions.length)];
+                            } while (newFunc === currentFunc && functions.length > 1);
+                            mutated.neurons[neuronIdx].activationFunction = newFunc;
+                        } else if (mutated.neurons.length > 0) {
+                            // Если нет скрытых нейронов, меняем у любого
+                            const neuronIdx = Math.floor(Math.random() * mutated.neurons.length);
+                            const currentFunc = mutated.neurons[neuronIdx].activationFunction;
+                            let newFunc;
+                            do {
+                                newFunc = functions[Math.floor(Math.random() * functions.length)];
+                            } while (newFunc === currentFunc && functions.length > 1);
+                            mutated.neurons[neuronIdx].activationFunction = newFunc;
+                        }
                     }
                     break;
             }
@@ -720,19 +806,23 @@ class Evolution {
     initialize(trainingData) {
         this.innerPopulation = [];
         
+        const inputCount = trainingData[0]?.input.length || 2;
+        const outputCount = trainingData[0]?.output.length || 1;
+        
         for (let i = 0; i < this.config.innerPopSize; i++) {
             const network = new NeuralNetwork();
-            const inputCount = trainingData[0]?.input.length || 2;
-            const outputCount = trainingData[0]?.output.length || 1;
+            network.setInputOutputCounts(inputCount, outputCount);
             
+            // Создаем входные нейроны
             for (let j = 0; j < inputCount; j++) {
                 network.addNeuron('linear');
             }
+            // Создаем выходные нейроны
             for (let j = 0; j < outputCount; j++) {
-                network.addNeuron('linear');
+                network.addNeuron('sigmoid');
             }
             
-            // Add initial connections from input neurons to output neurons
+            // Добавляем начальные связи от всех входных ко всем выходным
             for (let inp = 0; inp < inputCount; inp++) {
                 for (let out = inputCount; out < inputCount + outputCount; out++) {
                     const weight = (Math.random() - 0.5) * 2;
@@ -768,16 +858,27 @@ class Evolution {
             }
         }
 
+        // Сортируем потомков по приспособленности (лучшие первыми)
+        this.outerPopulation.sort((a, b) => {
+            const comparison = FitnessEvaluator.compare(a, b);
+            return comparison === a ? -1 : 1;
+        });
+
+        // Заменяем родителей только на лучших потомков
         for (const offspring of this.outerPopulation) {
             const parent = offspring.parent;
+            if (!parent) continue;
+            
+            const parentIdx = this.innerPopulation.indexOf(parent);
+            if (parentIdx === -1) continue;
+            
+            // Сравниваем потомка с родителем
             const better = FitnessEvaluator.compare(offspring, parent);
             
-            if (better === offspring && offspring.parent === parent) {
-                const idx = this.innerPopulation.indexOf(parent);
-                if (idx !== -1) {
-                    this.innerPopulation[idx] = offspring.clone();
-                    this.innerPopulation[idx].parent = null;
-                }
+            // Заменяем только если потомок лучше
+            if (better === offspring) {
+                this.innerPopulation[parentIdx] = offspring.clone();
+                this.innerPopulation[parentIdx].parent = null;
             }
         }
 
