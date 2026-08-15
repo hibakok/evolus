@@ -4,17 +4,30 @@ __pycache__/
 *.pyc
 *.pyo
 
-# Dependencies
-venv/
-.venv/
-.env
-.env.local
-
-# Logs and temp files
+# Logs and temporary files
 *.log
 *.tmp
 
-# Editors
+# Environment files
+.env
+.env.local
+*.env.*
+
+# Editor/IDE files
 .vscode/
 .idea/
+*.swp
+*.swo
+
+# Build/distribution directories
+dist/
+build/
+target/
+
+# Dependencies
+node_modules/
+.venv/
+venv/
+.mypy_cache/
+.pytest_cache/
 ```
