@@ -12,24 +12,15 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-    
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: '8.0.x'
-    
+
+    - name: Setup .NET Framework
+      uses: microsoft/setup-msbuild@v2
+
     - name: Restore dependencies
-      run: dotnet restore evolus.sln
-      
-    - name: Build Core library
-      run: dotnet build src/evolus.Core/evolus.Core.csproj --configuration Release --no-restore
-      
-    - name: Run tests
-      run: dotnet test tests/evolus.Tests/evolus.Tests.csproj --verbosity normal --logger trx --results-directory TestResults
-      
-    - name: Upload test results
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: test-results
-        path: TestResults/*.trx
+      run: nuget restore evolus.sln
+
+    - name: Build
+      run: msbuild evolus.sln /p:Configuration=Release /t:Build
+
+    - name: Test
+      run: dotnet test evolus.sln --no-build --verbosity normal

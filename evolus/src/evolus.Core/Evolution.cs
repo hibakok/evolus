@@ -1,563 +1,288 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 
-namespace evolus.Core
+namespace evolus.Core;
+
+/// <summary>
+/// Пара входных-выходных данных для обучения
+/// </summary>
+public class TrainingPair
+{
+    public decimal[] Input { get; }
+    public decimal[] Output { get; }
+
+    public TrainingPair(decimal[] input, decimal[] output)
+    {
+        Input = input;
+        Output = output;
+    }
+}
+
+/// <summary>
+/// Загрузчик обучающих данных из файла
+/// </summary>
+public static class TrainingDataLoader
 {
     /// <summary>
-    /// Пара входных-выходных данных для обучения/тестирования
+    /// Загрузить пары данных из файла
+    /// Формат: "0 1 | 1 0" (входные | выходные)
     /// </summary>
-    public class DataPair
+    public static List<TrainingPair> LoadFromFile(string path)
     {
-        public decimal[] Input { get; set; }
-        public decimal[] Output { get; set; }
+        if (!File.Exists(path))
+            throw new FileNotFoundException($"Файл обучающих данных не найден: {path}");
 
-        public DataPair(decimal[] input, decimal[] output)
+        var pairs = new List<TrainingPair>();
+        var lines = File.ReadAllLines(path);
+
+        foreach (var line in lines)
         {
-            Input = input;
-            Output = output;
-        }
-    }
+            var trimmedLine = line.Trim();
+            if (string.IsNullOrEmpty(trimmedLine) || trimmedLine.StartsWith("#"))
+                continue; // Пропускаем пустые строки и комментарии
 
-    /// <summary>
-    /// Менеджер для загрузки и управления данными обучения
-    /// </summary>
-    public class DataManager
-    {
-        public List<DataPair> DataPairs { get; set; } = new List<DataPair>();
-        public int InputDimension { get; private set; } = 0;
-        public int OutputDimension { get; private set; } = 0;
+            var parts = trimmedLine.Split('|');
+            if (parts.Length != 2)
+                throw new Exception($"Неверный формат строки: {line}. Ожидается 'входные | выходные'");
 
-        /// <summary>
-        /// Загружает данные из текстового файла
-        /// Формат: "input1 input2 | output1 output2"
-        /// </summary>
-        public void LoadFromFile(string filePath)
-        {
-            DataPairs.Clear();
-            InputDimension = 0;
-            OutputDimension = 0;
-
-            if (!File.Exists(filePath))
-                throw new FileNotFoundException($"Data file not found: {filePath}");
-
-            using (var reader = new StreamReader(filePath))
-            {
-                string line;
-                int lineNumber = 0;
-
-                while ((line = reader.ReadLine()) != null)
-                {
-                    lineNumber++;
-                    line = line.Trim();
-
-                    // Пропускаем пустые строки и комментарии
-                    if (string.IsNullOrEmpty(line) || line.StartsWith("#"))
-                        continue;
-
-                    var parts = line.Split('|');
-                    if (parts.Length != 2)
-                        throw new FormatException($"Line {lineNumber}: Expected format 'inputs | outputs'");
-
-                    var inputValues = parts[0].Trim()
-                        .Split(' ')
-                        .Where(s => !string.IsNullOrEmpty(s))
-                        .Select(decimal.Parse)
-                        .ToArray();
-
-                    var outputValues = parts[1].Trim()
-                        .Split(' ')
-                        .Where(s => !string.IsNullOrEmpty(s))
-                        .Select(decimal.Parse)
-                        .ToArray();
-
-                    if (InputDimension == 0)
-                    {
-                        InputDimension = inputValues.Length;
-                        OutputDimension = outputValues.Length;
-                    }
-                    else
-                    {
-                        if (inputValues.Length != InputDimension)
-                            throw new FormatException($"Line {lineNumber}: Input dimension mismatch");
-                        if (outputValues.Length != OutputDimension)
-                            throw new FormatException($"Line {lineNumber}: Output dimension mismatch");
-                    }
-
-                    DataPairs.Add(new DataPair(inputValues, outputValues));
-                }
-            }
-
-            if (DataPairs.Count == 0)
-                throw new InvalidOperationException("No data pairs loaded from file");
-        }
-
-        /// <summary>
-        /// Сохраняет данные в текстовый файл
-        /// </summary>
-        public void SaveToFile(string filePath)
-        {
-            using (var writer = new StreamWriter(filePath))
-            {
-                writer.WriteLine("# Evolus Training Data");
-                writer.WriteLine($"# Input dimension: {InputDimension}, Output dimension: {OutputDimension}");
-                writer.WriteLine("# Format: input1 input2 ... | output1 output2 ...");
-                writer.WriteLine();
-
-                foreach (var pair in DataPairs)
-                {
-                    var inputStr = string.Join(" ", pair.Input);
-                    var outputStr = string.Join(" ", pair.Output);
-                    writer.WriteLine($"{inputStr} | {outputStr}");
-                }
-            }
-        }
-    }
-
-    /// <summary>
-    /// Особь в эволюционном алгоритме
-    /// </summary>
-    public class Individual
-    {
-        public NeuralNetwork Network { get; set; }
-        public decimal Fitness { get; set; } = decimal.MaxValue;
-        public int ParentId { get; set; } = -1;
-        public int Id { get; set; }
-        public int Generation { get; set; }
-
-        public Individual(NeuralNetwork network, int id, int generation, int parentId = -1)
-        {
-            Network = network;
-            Id = id;
-            Generation = generation;
-            ParentId = parentId;
-        }
-
-        /// <summary>
-        /// Вычисляет приспособленность особи на основе всех пар данных
-        /// Возвращает ошибку (0 = идеальное выполнение)
-        /// </summary>
-        public decimal CalculateFitness(List<DataPair> dataPairs)
-        {
-            decimal totalError = 0m;
-
-            foreach (var pair in dataPairs)
-            {
-                try
-                {
-                    var outputs = Network.Forward(pair.Input);
-
-                    for (int i = 0; i < Math.Min(outputs.Length, pair.Output.Length); i++)
-                    {
-                        totalError += Math.Abs(outputs[i] - pair.Output[i]);
-                    }
-                }
-                catch
-                {
-                    // Если сеть не может обработать вход, считаем ошибку максимальной
-                    return decimal.MaxValue;
-                }
-            }
-
-            Fitness = totalError;
-            return totalError;
-        }
-    }
-
-    /// <summary>
-    /// Конфигурация эволюционного алгоритма
-    /// </summary>
-    public class EvolutionConfig
-    {
-        public int PopulationSize { get; set; } = 50;
-        public int OffspringPerIndividual { get; set; } = 3;
-        public int MutationsPerOffspring { get; set; } = 5;
-        public int MaxGenerations { get; set; } = 1000;
-        public int RandomSeed { get; set; } = 42;
-
-        public static EvolutionConfig LoadFromFile(string filePath)
-        {
-            var config = new EvolutionConfig();
-
-            if (!File.Exists(filePath))
-            {
-                config.SaveToFile(filePath);
-                return config;
-            }
-
-            using (var reader = new StreamReader(filePath))
-            {
-                string line;
-                while ((line = reader.ReadLine()) != null)
-                {
-                    line = line.Trim();
-                    if (string.IsNullOrEmpty(line) || line.StartsWith("#"))
-                        continue;
-
-                    var parts = line.Split('=');
-                    if (parts.Length != 2)
-                        continue;
-
-                    var key = parts[0].Trim();
-                    var value = parts[1].Trim();
-
-                    switch (key.ToLower())
-                    {
-                        case "populationsize":
-                            config.PopulationSize = int.Parse(value);
-                            break;
-                        case "offspringperindividual":
-                            config.OffspringPerIndividual = int.Parse(value);
-                            break;
-                        case "mutationsperoffspring":
-                            config.MutationsPerOffspring = int.Parse(value);
-                            break;
-                        case "maxgenerations":
-                            config.MaxGenerations = int.Parse(value);
-                            break;
-                        case "randomseed":
-                            config.RandomSeed = int.Parse(value);
-                            break;
-                    }
-                }
-            }
-
-            return config;
-        }
-
-        public void SaveToFile(string filePath)
-        {
-            using (var writer = new StreamWriter(filePath))
-            {
-                writer.WriteLine("# Evolus Evolution Configuration");
-                writer.WriteLine($"PopulationSize={PopulationSize}");
-                writer.WriteLine($"OffspringPerIndividual={OffspringPerIndividual}");
-                writer.WriteLine($"MutationsPerOffspring={MutationsPerOffspring}");
-                writer.WriteLine($"MaxGenerations={MaxGenerations}");
-                writer.WriteLine($"RandomSeed={RandomSeed}");
-            }
-        }
-    }
-
-    /// <summary>
-    /// Эволюционный движок
-    /// </summary>
-    public class EvolutionEngine
-    {
-        private readonly EvolutionConfig _config;
-        private readonly List<DataPair> _dataPairs;
-        private readonly Random _random;
-        
-        // Внутренняя популяция (неприкосновенные особи)
-        private List<Individual> _innerPopulation;
-        
-        // Внешняя популяция (потомки для тестирования)
-        private List<Individual> _outerPopulation;
-
-        private int _currentGeneration;
-        private int _nextIndividualId;
-
-        public EvolutionEngine(EvolutionConfig config, List<DataPair> dataPairs)
-        {
-            _config = config;
-            _dataPairs = dataPairs;
-            _random = new Random(config.RandomSeed);
-            _innerPopulation = new List<Individual>();
-            _outerPopulation = new List<Individual>();
-            _currentGeneration = 0;
-            _nextIndividualId = 0;
-        }
-
-        /// <summary>
-        /// Инициализирует эволюцию с нулевой нейросети
-        /// </summary>
-        public void Initialize(int inputCount, int outputCount)
-        {
-            _innerPopulation.Clear();
-            _outerPopulation.Clear();
-            _currentGeneration = 0;
-            _nextIndividualId = 0;
-
-            // Создаем начальную популяцию из совершенно нулевых сетей
-            for (int i = 0; i < _config.PopulationSize; i++)
-            {
-                var network = new NeuralNetwork(inputCount, outputCount);
-                var individual = new Individual(network, _nextIndividualId++, _currentGeneration);
-                individual.CalculateFitness(_dataPairs);
-                _innerPopulation.Add(individual);
-            }
-        }
-
-        /// <summary>
-        /// Выполняет одно поколение эволюции
-        /// </summary>
-        public EvolutionResult EvolveOneGeneration()
-        {
-            _outerPopulation.Clear();
-
-            // Каждая особь внутренней популяции создает потомков
-            foreach (var parent in _innerPopulation)
-            {
-                for (int i = 0; i < _config.OffspringPerIndividual; i++)
-                {
-                    var childNetwork = parent.Network.Clone();
-                    childNetwork.ApplyMutations(_random, _config.MutationsPerOffspring);
-
-                    var child = new Individual(childNetwork, _nextIndividualId++, _currentGeneration + 1, parent.Id);
-                    child.CalculateFitness(_dataPairs);
-                    _outerPopulation.Add(child);
-                }
-            }
-
-            // Сортируем потомков по приспособленности (лучшие первые)
-            // Сначала по ошибке (меньше = лучше), затем по сложности (меньше = лучше при равной ошибке)
-            var sortedOffspring = _outerPopulation
-                .OrderBy(x => x.Fitness)
-                .ThenBy(x => x.Network.Complexity)
-                .ToList();
-
-            // Заменяем родителей только если потомок лучше
-            var newInnerPopulation = new List<Individual>();
-            var replacedCount = 0;
-
-            foreach (var parent in _innerPopulation)
-            {
-                // Находим лучшего потомка этого родителя
-                var parentOffspring = sortedOffspring
-                    .Where(o => o.ParentId == parent.Id)
-                    .OrderBy(o => o.Fitness)
-                    .ThenBy(o => o.Network.Complexity)
-                    .FirstOrDefault();
-
-                if (parentOffspring != null)
-                {
-                    // Прямое сравнение: потомок заменяет родителя только если ошибка меньше
-                    // Или если ошибка равна, но сложность меньше
-                    bool isBetter = parentOffspring.Fitness < parent.Fitness ||
-                                   (parentOffspring.Fitness == parent.Fitness && 
-                                    parentOffspring.Network.Complexity < parent.Network.Complexity);
-
-                    if (isBetter)
-                    {
-                        newInnerPopulation.Add(parentOffspring);
-                        replacedCount++;
-                    }
-                    else
-                    {
-                        newInnerPopulation.Add(parent);
-                    }
-                }
-                else
-                {
-                    newInnerPopulation.Add(parent);
-                }
-            }
-
-            _innerPopulation = newInnerPopulation;
-            _currentGeneration++;
-
-            // Находим лучшую особь
-            var bestIndividual = _innerPopulation
-                .OrderBy(x => x.Fitness)
-                .ThenBy(x => x.Network.Complexity)
-                .First();
-
-            return new EvolutionResult
-            {
-                Generation = _currentGeneration,
-                BestFitness = bestIndividual.Fitness,
-                BestComplexity = bestIndividual.Network.Complexity,
-                ReplacedCount = replacedCount,
-                AverageFitness = _innerPopulation.Average(x => x.Fitness)
-            };
-        }
-
-        /// <summary>
-        /// Выполняет указанное количество поколений
-        /// </summary>
-        public EvolutionResult EvolveGenerations(int generations)
-        {
-            EvolutionResult lastResult = null;
-
-            for (int i = 0; i < generations; i++)
-            {
-                lastResult = EvolveOneGeneration();
-            }
-
-            return lastResult;
-        }
-
-        /// <summary>
-        /// Получает лучшую особь из внутренней популяции
-        /// </summary>
-        public Individual GetBestIndividual()
-        {
-            return _innerPopulation
-                .OrderBy(x => x.Fitness)
-                .ThenBy(x => x.Network.Complexity)
-                .First();
-        }
-
-        /// <summary>
-        /// Сохраняет состояние эволюции (внутреннюю популяцию)
-        /// </summary>
-        public void SaveProgress(string directoryPath)
-        {
-            if (!Directory.Exists(directoryPath))
-                Directory.CreateDirectory(directoryPath);
-
-            // Сохраняем каждую особь внутренней популяции
-            for (int i = 0; i < _innerPopulation.Count; i++)
-            {
-                var individual = _innerPopulation[i];
-                var filePath = Path.Combine(directoryPath, $"individual_{i}.net");
-                individual.Network.SaveToFile(filePath);
-            }
-
-            // Сохраняем метаданные
-            var metadataPath = Path.Combine(directoryPath, "metadata.txt");
-            using (var writer = new StreamWriter(metadataPath))
-            {
-                writer.WriteLine($"CurrentGeneration={_currentGeneration}");
-                writer.WriteLine($"NextIndividualId={_nextIndividualId}");
-                writer.WriteLine($"PopulationSize={_innerPopulation.Count}");
-                
-                for (int i = 0; i < _innerPopulation.Count; i++)
-                {
-                    var ind = _innerPopulation[i];
-                    writer.WriteLine($"Individual_{i}_Fitness={ind.Fitness}");
-                    writer.WriteLine($"Individual_{i}_ParentId={ind.ParentId}");
-                    writer.WriteLine($"Individual_{i}_Generation={ind.Generation}");
-                }
-            }
-        }
-
-        /// <summary>
-        /// Загружает состояние эволюции
-        /// </summary>
-        public void LoadProgress(string directoryPath)
-        {
-            var metadataPath = Path.Combine(directoryPath, "metadata.txt");
-            if (!File.Exists(metadataPath))
-                throw new FileNotFoundException("Metadata file not found");
-
-            _innerPopulation.Clear();
+            var inputValues = parts[0].Trim().Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(x => decimal.Parse(x, CultureInfo.InvariantCulture)).ToArray();
             
-            using (var reader = new StreamReader(metadataPath))
-            {
-                string line;
-                var individualData = new Dictionary<int, (decimal Fitness, int ParentId, int Generation)>();
+            var outputValues = parts[1].Trim().Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(x => decimal.Parse(x, CultureInfo.InvariantCulture)).ToArray();
 
-                while ((line = reader.ReadLine()) != null)
-                {
-                    var parts = line.Split('=');
-                    if (parts.Length != 2)
-                        continue;
-
-                    var key = parts[0].Trim();
-                    var value = parts[1].Trim();
-
-                    switch (key)
-                    {
-                        case "CurrentGeneration":
-                            _currentGeneration = int.Parse(value);
-                            break;
-                        case "NextIndividualId":
-                            _nextIndividualId = int.Parse(value);
-                            break;
-                        case "PopulationSize":
-                            // Просто читаем, размер будет определен по файлам
-                            break;
-                    }
-
-                    if (key.StartsWith("Individual_") && key.EndsWith("_Fitness"))
-                    {
-                        var index = int.Parse(key.Split('_')[1]);
-                        var fitness = decimal.Parse(value);
-                        
-                        // Читаем остальные данные для этой особи
-                        // (в реальном коде нужно читать все сразу, здесь упрощено)
-                    }
-                }
-            }
-
-            // Загружаем сети особей
-            for (int i = 0; ; i++)
-            {
-                var filePath = Path.Combine(directoryPath, $"individual_{i}.net");
-                if (!File.Exists(filePath))
-                    break;
-
-                var network = NeuralNetwork.LoadFromFile(filePath);
-                var individual = new Individual(network, i, _currentGeneration);
-                individual.CalculateFitness(_dataPairs);
-                _innerPopulation.Add(individual);
-            }
-
-            // Перечитываем метаданные с правильной привязкой к особям
-            using (var reader = new StreamReader(metadataPath))
-            {
-                string line;
-                int currentIndex = -1;
-
-                while ((line = reader.ReadLine()) != null)
-                {
-                    var parts = line.Split('=');
-                    if (parts.Length != 2)
-                        continue;
-
-                    var key = parts[0].Trim();
-                    var value = parts[1].Trim();
-
-                    if (key.StartsWith("Individual_") && key.Contains("_Fitness"))
-                    {
-                        currentIndex = int.Parse(key.Split('_')[1]);
-                        if (currentIndex < _innerPopulation.Count)
-                        {
-                            _innerPopulation[currentIndex].Fitness = decimal.Parse(value);
-                        }
-                    }
-                    else if (key.StartsWith("Individual_") && key.Contains("_ParentId"))
-                    {
-                        if (currentIndex >= 0 && currentIndex < _innerPopulation.Count)
-                        {
-                            _innerPopulation[currentIndex].ParentId = int.Parse(value);
-                        }
-                    }
-                    else if (key.StartsWith("Individual_") && key.Contains("_Generation"))
-                    {
-                        if (currentIndex >= 0 && currentIndex < _innerPopulation.Count)
-                        {
-                            _innerPopulation[currentIndex].Generation = int.Parse(value);
-                        }
-                    }
-                }
-            }
+            pairs.Add(new TrainingPair(inputValues, outputValues));
         }
 
-        public int CurrentGeneration => _currentGeneration;
-        public List<Individual> InnerPopulation => _innerPopulation;
+        return pairs;
     }
 
     /// <summary>
-    /// Результат эволюции
+    /// Сохранить пары данных в файл
     /// </summary>
-    public class EvolutionResult
+    public static void SaveToFile(string path, List<TrainingPair> pairs)
     {
-        public int Generation { get; set; }
-        public decimal BestFitness { get; set; }
-        public int BestComplexity { get; set; }
-        public int ReplacedCount { get; set; }
-        public decimal AverageFitness { get; set; }
+        using var writer = new StreamWriter(path);
+        
+        writer.WriteLine("# Формат: входные_значения | выходные_значения");
+        writer.WriteLine("# Пример: 0 1 | 1 0");
+        writer.WriteLine();
 
-        public override string ToString()
+        foreach (var pair in pairs)
         {
-            return $"Generation: {Generation}\n" +
-                   $"Best Fitness: {BestFitness}\n" +
-                   $"Best Complexity: {BestComplexity}\n" +
-                   $"Replaced: {ReplacedCount}\n" +
-                   $"Average Fitness: {AverageFitness}";
+            var inputStr = string.Join(" ", pair.Input.Select(x => x.ToString(CultureInfo.InvariantCulture)));
+            var outputStr = string.Join(" ", pair.Output.Select(x => x.ToString(CultureInfo.InvariantCulture)));
+            writer.WriteLine($"{inputStr} | {outputStr}");
         }
+    }
+}
+
+/// <summary>
+/// Особь в эволюционном алгоритме
+/// </summary>
+public class Individual
+{
+    public NeuralNetwork Network { get; }
+    public decimal Fitness { get; set; } = decimal.MaxValue; // Меньше = лучше (ошибка)
+    public int? ParentId { get; set; } // ID родителя во внутренней популяции
+    public int Id { get; }
+
+    private static int _nextId = 0;
+
+    public Individual(NeuralNetwork network, int? parentId = null)
+    {
+        Network = network;
+        ParentId = parentId;
+        Id = _nextId++;
+    }
+
+    public Individual Clone()
+    {
+        return new Individual(Network.Clone(), ParentId)
+        {
+            Fitness = Fitness
+        };
+    }
+}
+
+/// <summary>
+/// Менеджер мутаций
+/// </summary>
+public class MutationEngine
+{
+    private readonly Random _random;
+    
+    public MutationEngine(int seed)
+    {
+        _random = new Random(seed);
+    }
+
+    /// <summary>
+    /// Применить N минимальных мутаций к сети
+    /// </summary>
+    public void ApplyMutations(NeuralNetwork network, int mutationCount)
+    {
+        for (int i = 0; i < mutationCount; i++)
+        {
+            var mutationType = _random.Next(6); // 6 типов мутаций
+            
+            switch (mutationType)
+            {
+                case 0: MutateWeight(network); break;
+                case 1: AddConnection(network); break;
+                case 2: RemoveConnection(network); break;
+                case 3: AddNeuron(network); break;
+                case 4: RemoveNeuron(network); break;
+                case 5: ChangeActivationFunction(network); break;
+            }
+        }
+    }
+
+    private void MutateWeight(NeuralNetwork network)
+    {
+        if (network.Connections.Count == 0) return;
+
+        var conn = network.Connections[_random.Next(network.Connections.Count)];
+        var delta = (decimal)(_random.NextDouble() * 2 - 1) * 0.5m; // Изменение от -0.5 до 0.5
+        conn.Weight += delta;
+    }
+
+    private void AddConnection(NeuralNetwork network)
+    {
+        if (network.Neurons.Count < 2) return;
+
+        var from = network.Neurons[_random.Next(network.Neurons.Count)].Id;
+        var to = network.Neurons[_random.Next(network.Neurons.Count)].Id;
+        
+        if (from == to) return;
+        
+        var weight = (decimal)(_random.NextDouble() * 2 - 1); // Вес от -1 до 1
+        network.AddConnection(from, to, weight);
+    }
+
+    private void RemoveConnection(NeuralNetwork network)
+    {
+        if (network.Connections.Count == 0) return;
+
+        var conn = network.Connections[_random.Next(network.Connections.Count)];
+        network.RemoveConnection(conn.FromNeuronId, conn.ToNeuronId);
+    }
+
+    private void AddNeuron(NeuralNetwork network)
+    {
+        var functions = Enum.GetValues(typeof(ActivationFunction)).Cast<ActivationFunction>().ToList();
+        var func = functions[_random.Next(functions.Count)];
+        network.AddNeuron(func);
+    }
+
+    private void RemoveNeuron(NeuralNetwork network)
+    {
+        // Не удаляем входные и выходные нейроны
+        var removableNeurons = network.Neurons
+            .Where(n => n.Id >= network.InputCount + network.OutputCount)
+            .ToList();
+
+        if (removableNeurons.Count == 0) return;
+
+        var neuron = removableNeurons[_random.Next(removableNeurons.Count)];
+        network.RemoveNeuron(neuron.Id);
+    }
+
+    private void ChangeActivationFunction(NeuralNetwork network)
+    {
+        // Меняем функцию только у скрытых нейронов
+        var hiddenNeurons = network.Neurons
+            .Where(n => n.Id >= network.InputCount)
+            .ToList();
+
+        if (hiddenNeurons.Count == 0) return;
+
+        var neuron = hiddenNeurons[_random.Next(hiddenNeurons.Count)];
+        var functions = Enum.GetValues(typeof(ActivationFunction)).Cast<ActivationFunction>().ToList();
+        var newFunc = functions[_random.Next(functions.Count)];
+        
+        network.ChangeActivationFunction(neuron.Id, newFunc);
+    }
+}
+
+/// <summary>
+/// Вычисление приспособленности
+/// </summary>
+public class FitnessCalculator
+{
+    private readonly List<TrainingPair> _trainingData;
+
+    public FitnessCalculator(List<TrainingPair> trainingData)
+    {
+        _trainingData = trainingData;
+    }
+
+    /// <summary>
+    /// Вычислить приспособленность особи
+    /// Возвращает ошибку (меньше = лучше)
+    /// </summary>
+    public decimal CalculateFitness(NeuralNetwork network)
+    {
+        decimal totalError = 0;
+
+        foreach (var pair in _trainingData)
+        {
+            try
+            {
+                var outputs = network.Forward(pair.Input);
+                
+                // Считаем среднеквадратичную ошибку с максимальной точностью
+                for (int i = 0; i < Math.Min(outputs.Length, pair.Output.Length); i++)
+                {
+                    var diff = outputs[i] - pair.Output[i];
+                    totalError += diff * diff;
+                }
+
+                // Если сеть выдала меньше выходов чем ожидалось
+                if (outputs.Length < pair.Output.Length)
+                {
+                    for (int i = outputs.Length; i < pair.Output.Length; i++)
+                    {
+                        totalError += pair.Output[i] * pair.Output[i];
+                    }
+                }
+            }
+            catch
+            {
+                // При ошибке вычисления считаем ошибку максимальной
+                return decimal.MaxValue / 2;
+            }
+        }
+
+        return totalError / _trainingData.Count;
+    }
+
+    /// <summary>
+    /// Сравнить две особи по приспособленности
+    /// Возвращает true если first лучше second
+    /// Правила:
+    /// 1. Если сложность одинакова, лучше та у которой ошибка меньше
+    /// 2. Если сложность разная, но ошибка хотя бы чуть-чуть меньше у более сложной - она лучше
+    /// 3. Сложность не добавляет штрафа, а анализируется напрямую
+    /// </summary>
+    public bool IsBetter(NeuralNetwork first, decimal firstError, NeuralNetwork second, decimal secondError)
+    {
+        // Если ошибки равны с максимальной точностью
+        if (firstError == secondError)
+        {
+            // При равной ошибке предпочтительнее менее сложная
+            return first.Complexity < second.Complexity;
+        }
+
+        // Если ошибка первой хоть немного меньше - она лучше независимо от сложности
+        if (firstError < secondError)
+        {
+            return true;
+        }
+
+        return false;
     }
 }

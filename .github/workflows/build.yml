@@ -8,21 +8,20 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     
     steps:
     - uses: actions/checkout@v4
     
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: '8.0.x'
+    - name: Setup .NET Framework
+      uses: microsoft/setup-msbuild@v2
     
     - name: Restore dependencies
-      run: dotnet restore
+      run: dotnet restore evolus/evolus.sln
     
     - name: Build
-      run: dotnet build --no-restore --configuration Release
+      run: dotnet build evolus/evolus.sln --no-restore --configuration Release
     
     - name: Test
-      run: dotnet test --no-build --configuration Release --verbosity normal
+      run: dotnet test evolus/evolus.sln --no-build --configuration Release --verbosity normal
+

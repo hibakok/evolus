@@ -1,418 +1,377 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
 using System.Linq;
 
-namespace evolus.Core
+namespace evolus.Core;
+
+/// <summary>
+/// Представляет связь между нейронами
+/// </summary>
+public class Connection
 {
-    /// <summary>
-    /// Представляет функцию активации нейрона
-    /// </summary>
-    public enum ActivationFunction
+    public int FromNeuronId { get; set; }
+    public int ToNeuronId { get; set; }
+    public decimal Weight { get; set; }
+
+    public Connection(int from, int to, decimal weight)
     {
-        Sigmoid,
-        Tanh,
-        ReLU,
-        Linear,
-        Step
+        FromNeuronId = from;
+        ToNeuronId = to;
+        Weight = weight;
+    }
+}
+
+/// <summary>
+/// Функции активации нейронов
+/// </summary>
+public enum ActivationFunction
+{
+    Sigmoid,
+    Tanh,
+    ReLU,
+    Linear,
+    Step
+}
+
+/// <summary>
+/// Нейрон в сети
+/// </summary>
+public class Neuron
+{
+    public int Id { get; set; }
+    public ActivationFunction ActivationFunction { get; set; } = ActivationFunction.Sigmoid;
+    public decimal Output { get; set; }
+
+    public Neuron(int id)
+    {
+        Id = id;
+    }
+}
+
+/// <summary>
+/// Нейросеть без слоев с произвольными связями
+/// </summary>
+public class NeuralNetwork
+{
+    public List<Neuron> Neurons { get; } = new();
+    public List<Connection> Connections { get; } = new();
+    
+    private int _nextNeuronId = 0;
+    private int _inputCount = 0;
+    private int _outputCount = 0;
+
+    public int InputCount 
+    { 
+        get => _inputCount; 
+        set => _inputCount = value;
+    }
+    
+    public int OutputCount 
+    { 
+        get => _outputCount; 
+        set => _outputCount = value;
     }
 
     /// <summary>
-    /// Нейрон в сети
+    /// Вычислительная сложность (количество связей + количество нейронов)
     /// </summary>
-    public class Neuron
+    public int Complexity => Connections.Count + Neurons.Count;
+
+    /// <summary>
+    /// Создать новую пустую сеть
+    /// </summary>
+    public static NeuralNetwork CreateEmpty(int inputCount, int outputCount)
     {
-        public int Id { get; set; }
-        public ActivationFunction ActivationFunction { get; set; } = ActivationFunction.Sigmoid;
-        public double Bias { get; set; } = 0.0;
-
-        public Neuron() { }
-
-        public Neuron(int id, ActivationFunction activationFunction = ActivationFunction.Sigmoid)
+        var network = new NeuralNetwork
         {
-            Id = id;
-            ActivationFunction = activationFunction;
-        }
+            _inputCount = inputCount,
+            _outputCount = outputCount,
+            _nextNeuronId = 0
+        };
 
-        public double Activate(double input)
+        // Создаем входные нейроны
+        for (int i = 0; i < inputCount; i++)
         {
-            double value = input + Bias;
-            return ActivationFunction switch
+            network.Neurons.Add(new Neuron(network._nextNeuronId++)
             {
-                ActivationFunction.Sigmoid => 1.0 / (1.0 + Math.Exp(-value)),
-                ActivationFunction.Tanh => Math.Tanh(value),
-                ActivationFunction.ReLU => Math.Max(0, value),
-                ActivationFunction.Linear => value,
-                ActivationFunction.Step => value >= 0 ? 1.0 : 0.0,
-                _ => value
-            };
+                ActivationFunction = ActivationFunction.Linear
+            });
         }
-    }
 
-    /// <summary>
-    /// Связь между нейронами
-    /// </summary>
-    public class Connection
-    {
-        public int FromNeuronId { get; set; }
-        public int ToNeuronId { get; set; }
-        public decimal Weight { get; set; } = 0m;
-
-        public Connection() { }
-
-        public Connection(int from, int to, decimal weight = 0m)
+        // Создаем выходные нейроны
+        for (int i = 0; i < outputCount; i++)
         {
-            FromNeuronId = from;
-            ToNeuronId = to;
-            Weight = weight;
+            network.Neurons.Add(new Neuron(network._nextNeuronId++));
         }
+
+        return network;
     }
 
     /// <summary>
-    /// Нейросеть без разделения на слои - любой нейрон может быть связан с любым
+    /// Прямое распространение сигнала
     /// </summary>
-    public class NeuralNetwork
+    public decimal[] Forward(decimal[] inputs)
     {
-        public List<Neuron> Neurons { get; set; } = new List<Neuron>();
-        public List<Connection> Connections { get; set; } = new List<Connection>();
+        if (inputs.Length != _inputCount)
+            throw new ArgumentException($"Ожидается {_inputCount} входных значений, получено {inputs.Length}");
+
+        // Устанавливаем значения входных нейронов
+        for (int i = 0; i < _inputCount; i++)
+        {
+            Neurons[i].Output = inputs[i];
+        }
+
+        // Сортируем нейроны для правильного порядка вычислений (топологический порядок упрощенный)
+        // Для полносвязной сети без слоев выполняем несколько итераций распространения
+        int iterations = Math.Max(5, Neurons.Count);
         
-        // Входы и выходы определяются как первые N и последние M нейронов
-        public int InputCount { get; set; } = 0;
-        public int OutputCount { get; set; } = 0;
-
-        private int _nextNeuronId = 0;
-        private int _complexity = 0;
-
-        public NeuralNetwork() { }
-
-        public NeuralNetwork(int inputCount, int outputCount)
+        for (int iter = 0; iter < iterations; iter++)
         {
-            InputCount = inputCount;
-            OutputCount = outputCount;
-
-            // Создаем входные нейроны
-            for (int i = 0; i < inputCount; i++)
+            foreach (var neuron in Neurons.Skip(_inputCount)) // Пропускаем входные
             {
-                Neurons.Add(new Neuron(_nextNeuronId++, ActivationFunction.Linear));
-            }
-
-            // Создаем выходные нейроны
-            for (int i = 0; i < outputCount; i++)
-            {
-                Neurons.Add(new Neuron(_nextNeuronId++));
-            }
-        }
-
-        /// <summary>
-        /// Вычислительная сложность = количество связей + количество нейронов
-        /// </summary>
-        public int Complexity => Connections.Count + Neurons.Count;
-
-        /// <summary>
-        /// Прямое распространение сигнала
-        /// </summary>
-        public decimal[] Forward(decimal[] inputs)
-        {
-            if (inputs.Length != InputCount)
-                throw new ArgumentException($"Expected {InputCount} inputs, got {inputs.Length}");
-
-            // Инициализируем значения нейронов
-            var neuronValues = new Dictionary<int, decimal>();
-            for (int i = 0; i < InputCount; i++)
-            {
-                neuronValues[Neurons[i].Id] = inputs[i];
-            }
-
-            // Топологическая сортировка для правильного порядка вычислений
-            var sortedNeurons = TopologicalSort();
-            
-            // Вычисляем значения для остальных нейронов
-            foreach (var neuronId in sortedNeurons)
-            {
-                if (neuronId < InputCount) continue; // Пропускаем входные нейроны
-
-                var neuron = Neurons.First(n => n.Id == neuronId);
-                decimal sum = 0m;
-
-                foreach (var conn in Connections.Where(c => c.ToNeuronId == neuronId))
-                {
-                    if (neuronValues.ContainsKey(conn.FromNeuronId))
-                    {
-                        sum += neuronValues[conn.FromNeuronId] * (decimal)conn.Weight;
-                    }
-                }
-
-                // Преобразуем в double для функции активации, затем обратно в decimal
-                double inputValue = (double)sum;
-                double activated = neuron.Activate(inputValue);
-                neuronValues[neuronId] = (decimal)activated;
-            }
-
-            // Собираем выходные значения
-            var outputs = new decimal[OutputCount];
-            for (int i = 0; i < OutputCount; i++)
-            {
-                int outputNeuronId = Neurons[InputCount + i].Id;
-                outputs[i] = neuronValues.ContainsKey(outputNeuronId) ? neuronValues[outputNeuronId] : 0m;
-            }
-
-            return outputs;
-        }
-
-        /// <summary>
-        /// Топологическая сортировка нейронов для корректного порядка вычислений
-        /// </summary>
-        private List<int> TopologicalSort()
-        {
-            var visited = new HashSet<int>();
-            var result = new List<int>();
-            var tempMark = new HashSet<int>();
-
-            void Visit(int nodeId)
-            {
-                if (tempMark.Contains(nodeId))
-                    return; // Цикл, пропускаем
+                decimal sum = 0;
                 
-                if (visited.Contains(nodeId))
-                    return;
-
-                tempMark.Add(nodeId);
-
-                foreach (var conn in Connections.Where(c => c.FromNeuronId == nodeId))
+                foreach (var conn in Connections.Where(c => c.ToNeuronId == neuron.Id))
                 {
-                    Visit(conn.ToNeuronId);
+                    var fromNeuron = Neurons.FirstOrDefault(n => n.Id == conn.FromNeuronId);
+                    if (fromNeuron != null)
+                    {
+                        sum += fromNeuron.Output * conn.Weight;
+                    }
                 }
 
-                tempMark.Remove(nodeId);
-                visited.Add(nodeId);
-                result.Add(nodeId);
-            }
-
-            foreach (var neuron in Neurons)
-            {
-                if (!visited.Contains(neuron.Id))
-                {
-                    Visit(neuron.Id);
-                }
-            }
-
-            return result;
-        }
-
-        /// <summary>
-        /// Добавляет случайную связь
-        /// </summary>
-        public void AddRandomConnection(Random random)
-        {
-            if (Neurons.Count < 2) return;
-
-            int from = Neurons[random.Next(Neurons.Count)].Id;
-            int to = Neurons[random.Next(Neurons.Count)].Id;
-
-            if (from == to) return;
-            if (Connections.Any(c => c.FromNeuronId == from && c.ToNeuronId == to)) return;
-
-            Connections.Add(new Connection(from, to, (decimal)(random.NextDouble() * 2 - 1)));
-        }
-
-        /// <summary>
-        /// Удаляет случайную связь
-        /// </summary>
-        public void RemoveRandomConnection(Random random)
-        {
-            if (Connections.Count == 0) return;
-
-            int index = random.Next(Connections.Count);
-            Connections.RemoveAt(index);
-        }
-
-        /// <summary>
-        /// Изменяет вес случайной связи
-        /// </summary>
-        public void MutateWeight(Random random, decimal maxChange = 0.5m)
-        {
-            if (Connections.Count == 0) return;
-
-            var conn = Connections[random.Next(Connections.Count)];
-            decimal change = (decimal)(random.NextDouble() * 2 - 1) * maxChange;
-            conn.Weight += change;
-        }
-
-        /// <summary>
-        /// Добавляет новый нейрон
-        /// </summary>
-        public void AddNeuron(Random random)
-        {
-            var newNeuron = new Neuron(_nextNeuronId++, 
-                (ActivationFunction)random.Next(Enum.GetNames(typeof(ActivationFunction)).Length));
-            Neurons.Add(newNeuron);
-        }
-
-        /// <summary>
-        /// Удаляет случайный нейрон (не входной и не выходной)
-        /// </summary>
-        public void RemoveNeuron(Random random)
-        {
-            var removableNeurons = Neurons
-                .Where((n, i) => i >= InputCount && i < Neurons.Count - OutputCount)
-                .ToList();
-
-            if (removableNeurons.Count == 0) return;
-
-            var neuronToRemove = removableNeurons[random.Next(removableNeurons.Count)];
-            Neurons.Remove(neuronToRemove);
-            Connections.RemoveAll(c => c.FromNeuronId == neuronToRemove.Id || c.ToNeuronId == neuronToRemove.Id);
-        }
-
-        /// <summary>
-        /// Изменяет функцию активации случайного нейрона
-        /// </summary>
-        public void MutateActivationFunction(Random random)
-        {
-            var nonInputNeurons = Neurons.Skip(InputCount).ToList();
-            if (nonInputNeurons.Count == 0) return;
-
-            var neuron = nonInputNeurons[random.Next(nonInputNeurons.Count)];
-            neuron.ActivationFunction = (ActivationFunction)random.Next(Enum.GetNames(typeof(ActivationFunction)).Length);
-        }
-
-        /// <summary>
-        /// Применяет указанное количество минимальных мутаций
-        /// </summary>
-        public void ApplyMutations(Random random, int mutationCount)
-        {
-            var mutationActions = new List<Action>
-            {
-                () => MutateWeight(random),
-                () => AddRandomConnection(random),
-                () => RemoveRandomConnection(random),
-                () => AddNeuron(random),
-                () => RemoveNeuron(random),
-                () => MutateActivationFunction(random)
-            };
-
-            for (int i = 0; i < mutationCount; i++)
-            {
-                var action = mutationActions[random.Next(mutationActions.Count)];
-                action();
+                neuron.Output = ApplyActivation(sum, neuron.ActivationFunction);
             }
         }
 
-        /// <summary>
-        /// Клонирует нейросеть
-        /// </summary>
-        public NeuralNetwork Clone()
+        // Возвращаем значения выходных нейронов
+        var outputs = new decimal[_outputCount];
+        for (int i = 0; i < _outputCount; i++)
         {
-            var clone = new NeuralNetwork
-            {
-                InputCount = InputCount,
-                OutputCount = OutputCount,
-                _nextNeuronId = _nextNeuronId
-            };
-
-            foreach (var neuron in Neurons)
-            {
-                clone.Neurons.Add(new Neuron
-                {
-                    Id = neuron.Id,
-                    ActivationFunction = neuron.ActivationFunction,
-                    Bias = neuron.Bias
-                });
-            }
-
-            foreach (var conn in Connections)
-            {
-                clone.Connections.Add(new Connection
-                {
-                    FromNeuronId = conn.FromNeuronId,
-                    ToNeuronId = conn.ToNeuronId,
-                    Weight = conn.Weight
-                });
-            }
-
-            return clone;
+            outputs[i] = Neurons[_inputCount + i].Output;
         }
 
-        /// <summary>
-        /// Сохраняет нейросеть в текстовый файл
-        /// </summary>
-        public void SaveToFile(string filePath)
+        return outputs;
+    }
+
+    private decimal ApplyActivation(decimal x, ActivationFunction func)
+    {
+        return func switch
         {
-            using (var writer = new System.IO.StreamWriter(filePath))
-            {
-                writer.WriteLine($"# Evolus Neural Network");
-                writer.WriteLine($"# Inputs: {InputCount}, Outputs: {OutputCount}");
-                writer.WriteLine($"# NextNeuronId: {_nextNeuronId}");
-                writer.WriteLine();
+            ActivationFunction.Sigmoid => 1m / (1m + Exp(-x)),
+            ActivationFunction.Tanh => Tanh(x),
+            ActivationFunction.ReLU => x > 0 ? x : 0m,
+            ActivationFunction.Linear => x,
+            ActivationFunction.Step => x >= 0 ? 1m : 0m,
+            _ => x
+        };
+    }
 
-                writer.WriteLine("# Neurons (Id, ActivationFunction, Bias)");
-                foreach (var neuron in Neurons)
-                {
-                    writer.WriteLine($"N {neuron.Id} {neuron.ActivationFunction} {neuron.Bias}");
-                }
-                writer.WriteLine();
-
-                writer.WriteLine("# Connections (From, To, Weight)");
-                foreach (var conn in Connections)
-                {
-                    writer.WriteLine($"C {conn.FromNeuronId} {conn.ToNeuronId} {conn.Weight}");
-                }
-            }
-        }
-
-        /// <summary>
-        /// Загружает нейросеть из текстового файла
-        /// </summary>
-        public static NeuralNetwork LoadFromFile(string filePath)
+    // Приближенное вычисление exp для decimal
+    private decimal Exp(decimal x)
+    {
+        // Используем разложение в ряд Тейлора для точности
+        if (x < -700m) return 0m;
+        if (x > 700m) return decimal.MaxValue;
+        
+        decimal result = 1m;
+        decimal term = 1m;
+        
+        for (int i = 1; i <= 50; i++)
         {
-            var network = new NeuralNetwork();
+            term *= x / i;
+            result += term;
             
-            using (var reader = new System.IO.StreamReader(filePath))
-            {
-                string line;
-                while ((line = reader.ReadLine()) != null)
-                {
-                    line = line.Trim();
-                    if (string.IsNullOrEmpty(line) || line.StartsWith("#")) continue;
-
-                    var parts = line.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
-                    if (parts.Length < 2) continue;
-
-                    if (parts[0] == "N" && parts.Length >= 3)
-                    {
-                        int id = int.Parse(parts[1]);
-                        var activation = (ActivationFunction)Enum.Parse(typeof(ActivationFunction), parts[2]);
-                        double bias = parts.Length > 3 ? double.Parse(parts[3]) : 0.0;
-
-                        network.Neurons.Add(new Neuron(id, activation) { Bias = bias });
-                        
-                        if (id >= network._nextNeuronId)
-                            network._nextNeuronId = id + 1;
-                    }
-                    else if (parts[0] == "C" && parts.Length >= 4)
-                    {
-                        int from = int.Parse(parts[1]);
-                        int to = int.Parse(parts[2]);
-                        decimal weight = decimal.Parse(parts[3]);
-
-                        network.Connections.Add(new Connection(from, to, weight));
-                    }
-                    else if (line.StartsWith("# Inputs:"))
-                    {
-                        var match = System.Text.RegularExpressions.Regex.Match(line, @"Inputs:\s*(\d+),\s*Outputs:\s*(\d+)");
-                        if (match.Success)
-                        {
-                            network.InputCount = int.Parse(match.Groups[1].Value);
-                            network.OutputCount = int.Parse(match.Groups[2].Value);
-                        }
-                    }
-                    else if (line.StartsWith("# NextNeuronId:"))
-                    {
-                        network._nextNeuronId = int.Parse(line.Split(':')[1].Trim());
-                    }
-                }
-            }
-
-            return network;
+            if (Math.Abs((double)term) < 1e-28) break;
         }
+        
+        return result;
+    }
+
+    // Приближенное вычисление tanh для decimal
+    private decimal Tanh(decimal x)
+    {
+        if (x < -20m) return -1m;
+        if (x > 20m) return 1m;
+        
+        var expX = Exp(x);
+        var expNegX = Exp(-x);
+        
+        return (expX - expNegX) / (expX + expNegX);
+    }
+
+    /// <summary>
+    /// Добавить нейрон
+    /// </summary>
+    public void AddNeuron(ActivationFunction func = ActivationFunction.Sigmoid)
+    {
+        Neurons.Add(new Neuron(_nextNeuronId++) { ActivationFunction = func });
+    }
+
+    /// <summary>
+    /// Удалить нейрон по ID
+    /// </summary>
+    public bool RemoveNeuron(int id)
+    {
+        var neuron = Neurons.FirstOrDefault(n => n.Id == id);
+        if (neuron == null) return false;
+
+        // Удаляем все связи с этим нейроном
+        Connections.RemoveAll(c => c.FromNeuronId == id || c.ToNeuronId == id);
+        Neurons.Remove(neuron);
+        
+        return true;
+    }
+
+    /// <summary>
+    /// Добавить связь
+    /// </summary>
+    public void AddConnection(int from, int to, decimal weight)
+    {
+        if (!Neurons.Any(n => n.Id == from) || !Neurons.Any(n => n.Id == to))
+            return;
+        
+        if (from == to) return; // Без петель
+        
+        // Проверяем, нет ли уже такой связи
+        if (Connections.Any(c => c.FromNeuronId == from && c.ToNeuronId == to))
+            return;
+
+        Connections.Add(new Connection(from, to, weight));
+    }
+
+    /// <summary>
+    /// Удалить связь
+    /// </summary>
+    public bool RemoveConnection(int from, int to)
+    {
+        var conn = Connections.FirstOrDefault(c => c.FromNeuronId == from && c.ToNeuronId == to);
+        if (conn == null) return false;
+        
+        Connections.Remove(conn);
+        return true;
+    }
+
+    /// <summary>
+    /// Изменить вес связи
+    /// </summary>
+    public bool ChangeConnectionWeight(int from, int to, decimal newWeight)
+    {
+        var conn = Connections.FirstOrDefault(c => c.FromNeuronId == from && c.ToNeuronId == to);
+        if (conn == null) return false;
+        
+        conn.Weight = newWeight;
+        return true;
+    }
+
+    /// <summary>
+    /// Изменить функцию активации нейрона
+    /// </summary>
+    public bool ChangeActivationFunction(int neuronId, ActivationFunction newFunc)
+    {
+        var neuron = Neurons.FirstOrDefault(n => n.Id == neuronId);
+        if (neuron == null) return false;
+        
+        // Входные нейроны всегда линейные
+        if (neuron.Id < _inputCount) return false;
+        
+        neuron.ActivationFunction = newFunc;
+        return true;
+    }
+
+    /// <summary>
+    /// Сохранить сеть в файл
+    /// </summary>
+    public void SaveToFile(string path)
+    {
+        using var writer = new StreamWriter(path);
+        
+        // Заголовок: входы|выходы
+        writer.WriteLine($"{_inputCount}|{_outputCount}");
+        
+        // Нейроны: ID|Функция
+        foreach (var neuron in Neurons)
+        {
+            writer.WriteLine($"N|{neuron.Id}|{(int)neuron.ActivationFunction}");
+        }
+        
+        // Связи: От|К|Вес
+        foreach (var conn in Connections)
+        {
+            writer.WriteLine($"C|{conn.FromNeuronId}|{conn.ToNeuronId}|{conn.Weight}");
+        }
+    }
+
+    /// <summary>
+    /// Загрузить сеть из файла
+    /// </summary>
+    public static NeuralNetwork LoadFromFile(string path)
+    {
+        if (!File.Exists(path))
+            throw new FileNotFoundException($"Файл не найден: {path}");
+
+        var lines = File.ReadAllLines(path);
+        if (lines.Length == 0)
+            throw new Exception("Пустой файл сети");
+
+        var header = lines[0].Split('|');
+        var inputCount = int.Parse(header[0]);
+        var outputCount = int.Parse(header[1]);
+
+        var network = new NeuralNetwork
+        {
+            _inputCount = inputCount,
+            _outputCount = outputCount,
+            _nextNeuronId = 0
+        };
+
+        foreach (var line in lines.Skip(1))
+        {
+            var parts = line.Split('|');
+            if (parts[0] == "N")
+            {
+                var id = int.Parse(parts[1]);
+                var func = (ActivationFunction)int.Parse(parts[2]);
+                network.Neurons.Add(new Neuron(id) { ActivationFunction = func });
+                if (id >= network._nextNeuronId)
+                    network._nextNeuronId = id + 1;
+            }
+            else if (parts[0] == "C")
+            {
+                var from = int.Parse(parts[1]);
+                var to = int.Parse(parts[2]);
+                var weight = decimal.Parse(parts[3], CultureInfo.InvariantCulture);
+                network.Connections.Add(new Connection(from, to, weight));
+            }
+        }
+
+        return network;
+    }
+
+    /// <summary>
+    /// Клонировать сеть
+    /// </summary>
+    public NeuralNetwork Clone()
+    {
+        var clone = new NeuralNetwork
+        {
+            _inputCount = _inputCount,
+            _outputCount = _outputCount,
+            _nextNeuronId = _nextNeuronId
+        };
+
+        foreach (var neuron in Neurons)
+        {
+            clone.Neurons.Add(new Neuron(neuron.Id) { ActivationFunction = neuron.ActivationFunction });
+        }
+
+        foreach (var conn in Connections)
+        {
+            clone.Connections.Add(new Connection(conn.FromNeuronId, conn.ToNeuronId, conn.Weight));
+        }
+
+        return clone;
     }
 }
