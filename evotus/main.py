@@ -284,6 +284,7 @@ class ConfigManager:
             'population_size': 50,
             'offspring_per_individual': 4,
             'mutations_per_offspring': 5,
+            'outer_population_mutations': 5,
             'mutation_rate_weight': 0.3,
             'mutation_rate_connection': 0.2,
             'mutation_rate_neuron': 0.2,
@@ -697,7 +698,8 @@ class PopulationManager:
                 offspring_list = []
                 
                 for _ in range(num_offspring):
-                    mutations = self.config.get('mutations_per_offspring')
+                    # Использовать количество мутаций для внешней популяции (потомков)
+                    mutations = self.config.get('outer_population_mutations')
                     
                     # Адаптировать силу мутаций на лету
                     original_std = self.config.get('weight_mutation_std')
@@ -1064,7 +1066,8 @@ def configure_settings(config: ConfigManager):
     descriptions = {
         'population_size': 'Размер внутренней популяции',
         'offspring_per_individual': 'Количество потомков на особь',
-        'mutations_per_offspring': 'Количество мутаций на потомка',
+        'mutations_per_offspring': 'Количество мутаций на потомка (внутренняя популяция)',
+        'outer_population_mutations': 'Количество мутаций для особей внешней популяции',
         'mutation_rate_weight': 'Вероятность мутации веса',
         'mutation_rate_connection': 'Вероятность мутации связи',
         'mutation_rate_neuron': 'Вероятность мутации нейрона',
