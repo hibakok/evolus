@@ -214,11 +214,7 @@ public class EvolutionEngine
     /// </summary>
     public void SavePopulation(string savePath)
     {
-        var directory = Path.GetDirectoryName(savePath);
-        if (!string.IsNullOrEmpty(directory))
-        {
-            Directory.CreateDirectory(directory);
-        }
+        Directory.CreateDirectory(Path.GetDirectoryName(savePath) ?? "");
 
         var writer = new StreamWriter(savePath);
         try

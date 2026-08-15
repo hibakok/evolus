@@ -13,18 +13,15 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
-    - name: Setup MSBuild
+    - name: Setup .NET Framework
       uses: microsoft/setup-msbuild@v2
     
-    - name: Setup NuGet
-      uses: nuget/setup-nuget@v2
+    - name: Restore dependencies
+      run: dotnet restore evolus/evolus.sln
     
-    - name: Restore NuGet packages
-      run: nuget restore evolus.sln
+    - name: Build
+      run: dotnet build evolus/evolus.sln --no-restore --configuration Release
     
-    - name: Build solution
-      run: msbuild evolus.sln /p:Configuration=Release /t:Rebuild
-    
-    - name: Run tests
-      run: vstest.console.exe evolus/tests/evolus.Tests/bin/Release/net48/evolus.Tests.dll --logger:console
+    - name: Test
+      run: dotnet test evolus/evolus.sln --no-build --configuration Release --verbosity normal
 

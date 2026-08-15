@@ -55,8 +55,8 @@ public class Neuron
 /// </summary>
 public class NeuralNetwork
 {
-    public List<Neuron> Neurons { get; } = new List<Neuron>();
-    public List<Connection> Connections { get; } = new List<Connection>();
+    public List<Neuron> Neurons { get; } = new();
+    public List<Connection> Connections { get; } = new();
     
     private int _nextNeuronId = 0;
     private int _inputCount = 0;
