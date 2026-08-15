@@ -732,6 +732,14 @@ class Evolution {
                 network.addNeuron('linear');
             }
             
+            // Add initial connections from input neurons to output neurons
+            for (let inp = 0; inp < inputCount; inp++) {
+                for (let out = inputCount; out < inputCount + outputCount; out++) {
+                    const weight = (Math.random() - 0.5) * 2;
+                    network.addConnection(inp, out, weight);
+                }
+            }
+            
             FitnessEvaluator.evaluate(network, trainingData);
             this.innerPopulation.push(network);
         }
@@ -951,14 +959,21 @@ function runEvolutionLoop(totalGenerations) {
         const result = evolution.evolveGeneration(trainingData);
         
         document.getElementById('currentGen').textContent = result.generation;
-        document.getElementById('bestFitness').textContent = result.bestFitness.toExponential(6);
-        document.getElementById('avgFitness').textContent = result.avgFitness.toExponential(6);
+        
+        // Handle Infinity or invalid fitness values
+        const bestFitnessDisplay = isFinite(result.bestFitness) ? result.bestFitness.toExponential(6) : 'N/A';
+        const avgFitnessDisplay = isFinite(result.avgFitness) ? result.avgFitness.toExponential(6) : 'N/A';
+        
+        document.getElementById('bestFitness').textContent = bestFitnessDisplay;
+        document.getElementById('avgFitness').textContent = avgFitnessDisplay;
         
         const progress = ((result.generation - startGen) / totalGenerations) * 100;
         document.getElementById('progressFill').style.width = progress + '%';
         document.getElementById('progressFill').textContent = Math.round(progress) + '%';
 
-        log(`Поколение ${result.generation}: Лучшая=${result.bestFitness.toExponential(4)}, Средняя=${result.avgFitness.toExponential(4)}`, 'evolutionLog');
+        const bestLog = isFinite(result.bestFitness) ? result.bestFitness.toExponential(4) : 'Infinity';
+        const avgLog = isFinite(result.avgFitness) ? result.avgFitness.toExponential(4) : 'Infinity';
+        log(`Поколение ${result.generation}: Лучшая=${bestLog}, Средняя=${avgLog}`, 'evolutionLog');
 
         evolutionTimeout = setTimeout(step, 10);
     };
@@ -987,9 +1002,10 @@ function finishEvolution() {
         history: evolution.history
     };
 
-    log(`Эволюция завершена. Поколений: ${evolution.generation}, Лучшая приспособленность: ${evolution.bestFitness}`, 'evolutionLog');
-    
-    alert(`Эволюция завершена!\nПоколений: ${evolution.generation}\nЛучшая приспособленность: ${evolution.bestFitness.toExponential(6)}\n\nНажмите OK для просмотра отчета.`);
+    const fitnessLog = isFinite(evolution.bestFitness) ? evolution.bestFitness.toExponential(6) : 'N/A';
+    log(`Эволюция завершена. Поколений: ${evolution.generation}, Лучшая приспособленность: ${fitnessLog}`, 'evolutionLog');
+    const fitnessAlert = isFinite(evolution.bestFitness) ? evolution.bestFitness.toExponential(6) : 'N/A';
+    alert(`Эволюция завершена!\nПоколений: ${evolution.generation}\nЛучшая приспособленность: ${fitnessAlert}\n\nНажмите OK для просмотра отчета.`);
     showSection('report');
 }
 
@@ -1053,12 +1069,12 @@ function runAllTests() {
         }
         totalError += error;
 
-        results += `<p>Вход: ${dataPair.input.join(' ')} | Ожидаемый: ${dataPair.output.join(' ')} | Полученный: ${output.map(v => v.toFixed(6)).join(' ')} | Ошибка: ${error.toExponential(6)}</p>`;
+        results += `<p>Вход: ${dataPair.input.join(' ')} | Ожидаемый: ${dataPair.output.join(' ')} | Полученный: ${output.map(v => v.toFixed(6)).join(' ')} | Ошибка: ${isFinite(error) ? error.toExponential(6) : 'N/A'}</p>`;
     }
 
     const resultDiv = document.getElementById('testResult');
     resultDiv.classList.remove('hidden');
-    resultDiv.innerHTML = results + `<p><strong>Общая ошибка: ${totalError.toExponential(6)}</strong></p>`;
+    resultDiv.innerHTML = results + `<p><strong>Общая ошибка: ${isFinite(totalError) ? totalError.toExponential(6) : 'N/A'}</strong></p>`;
 }
 
 function visualizeNetwork() {
@@ -1263,7 +1279,7 @@ function loadIndividual(input) {
         }
 
         document.getElementById('saveLoadStatus').innerHTML = 
-            `<p>Особь загружена. Приспособленность: ${network.fitness.toExponential(6)}</p>`;
+            `<p>Особь загружена. Приспособленность: ${isFinite(network.fitness) ? network.fitness.toExponential(6) : 'N/A'}</p>`;
     };
     reader.readAsText(file);
 }
@@ -1277,7 +1293,7 @@ function displayReport(report) {
                 <div class="stat-label">Поколений</div>
             </div>
             <div class="stat-box">
-                <div class="stat-value">${report.bestFitness.toExponential(6)}</div>
+                <div class="stat-value">${isFinite(report.bestFitness) ? report.bestFitness.toExponential(6) : 'N/A'}</div>
                 <div class="stat-label">Лучшая приспособленность</div>
             </div>
             <div class="stat-box">
