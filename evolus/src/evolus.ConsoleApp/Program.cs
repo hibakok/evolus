@@ -59,7 +59,11 @@ class Program
                 new TrainingPair(new decimal[] { 1, 1 }, new decimal[] { 0 })
             };
             
-            Directory.CreateDirectory(Path.GetDirectoryName(dataPath)!);
+            var dataDirectory = Path.GetDirectoryName(dataPath);
+            if (!string.IsNullOrEmpty(dataDirectory))
+            {
+                Directory.CreateDirectory(dataDirectory);
+            }
             TrainingDataLoader.SaveToFile(dataPath, xorData);
             trainingData = xorData;
             
