@@ -1,9 +1,6 @@
-# Training Data File
-# Format: input1 input2 ... | output1 output2 ...
-# Each line represents one input-output pair
-# Elements are separated by spaces, inputs and outputs are separated by |
+# Формат: входные_значения | выходные_значения
+# Пример: 0 1 | 1 0
 
-# XOR problem example (2 inputs, 1 output)
 0 0 | 0
 0 1 | 1
 1 0 | 1

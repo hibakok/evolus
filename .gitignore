@@ -1,16 +1,17 @@
 ```
 # Build artifacts
-bin/
-obj/
-*.exe
+**/bin/
+**/obj/
+**/Debug/
+**/Release/
 *.dll
+*.exe
 *.pdb
-*.nupkg
+*.userprefs
 
 # Dependencies
 packages/
 node_modules/
-.nuget/
 
 # Logs
 *.log
@@ -30,57 +31,6 @@ node_modules/
 .DS_Store
 Thumbs.db
 
-# Coverage
-coverage/
-htmlcov/
-*.coverage
-
-# Distribution
-dist/
-build/
-target/
-
-# Python specific
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
-env/
-venv/
-.venv/
-pip-log.txt
-pip-delete-this-directory.txt
-.tox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-*.log
-.gitattributes
-.next
-.next/cache/
-output.js
-output.css
-coverage/
-lib/
-lib64/
-__pycache__/
-*.so
-.Python
-env/
-venv/
-.venv/
-pip-log.txt
-pip-delete-this-directory.txt
-.tox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-*.log
+# Test results
+**/TestResults/
 ```
