@@ -21,7 +21,7 @@ else:
     import tty
 
 # Пути к файлам конфигурации
-CONFIG_FILE = "config.json"
+CONFIG_FILE = "config.txt"
 DATA_FILE = "data.txt"
 POPULATION_FILE = "population.json"
 
@@ -256,20 +256,42 @@ class ConfigManager:
     
     def load(self):
         if os.path.exists(self.filename):
-            with open(self.filename, 'r') as f:
-                saved_config = json.load(f)
-                self.config.update(saved_config)
+            with open(self.filename, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    # Пропустить пустые строки и комментарии
+                    if not line or line.startswith('#'):
+                        continue
+                    
+                    # Разделить строку на ключ и значение по '='
+                    if '=' in line:
+                        key, value = line.split('=', 1)
+                        key = key.strip()
+                        value = value.strip()
+                        
+                        # Преобразовать значение в соответствующий тип
+                        if key in self.config:
+                            current_value = self.config[key]
+                            if isinstance(current_value, int):
+                                self.config[key] = int(value)
+                            elif isinstance(current_value, float):
+                                self.config[key] = float(value)
+                            elif isinstance(current_value, bool):
+                                self.config[key] = value.lower() in ('true', '1', 'yes')
+                            else:
+                                self.config[key] = value
     
     def save(self):
-        with open(self.filename, 'w') as f:
-            json.dump(self.config, f, indent=2)
+        # Сохранение в текстовый файл с комментариями не требуется,
+        # так как пользователь редактирует config.txt напрямую
+        pass
     
     def get(self, key: str, default=None):
         return self.config.get(key, default)
     
     def set(self, key: str, value):
         self.config[key] = value
-        self.save()
+        # Не сохраняем автоматически, пользователь редактирует config.txt вручную
 
 
 class Mutator:
@@ -787,36 +809,29 @@ def configure_settings(config: ConfigManager):
     print("=" * 60)
     print("НАСТРОЙКИ")
     print("=" * 60)
+    print("\nНастройки теперь хранятся в файле config.txt")
+    print("Вы можете отредактировать этот файл в любом текстовом редакторе.")
+    print("\nТекущие значения настроек:")
+    print("-" * 40)
+    
+    descriptions = {
+        'population_size': 'Размер внутренней популяции',
+        'offspring_per_individual': 'Количество потомков на особь',
+        'mutations_per_offspring': 'Количество мутаций на потомка',
+        'mutation_rate_weight': 'Вероятность мутации веса',
+        'mutation_rate_connection': 'Вероятность мутации связи',
+        'mutation_rate_neuron': 'Вероятность мутации нейрона',
+        'mutation_rate_activation': 'Вероятность мутации активации',
+        'weight_mutation_std': 'Стандартное отклонение мутации веса'
+    }
     
     for key, value in config.config.items():
-        print(f"{key}: {value}")
+        desc = descriptions.get(key, key)
+        print(f"{desc}: {value}")
     
-    print("\nВведите имя параметра и значение для изменения (или 'q' для выхода)")
-    
-    while True:
-        try:
-            user_input = input("\nИмя параметра: ").strip()
-            
-            if user_input.lower() == 'q':
-                break
-            
-            if user_input not in config.config:
-                print(f"Неизвестный параметр: {user_input}")
-                continue
-            
-            current_type = type(config.config[user_input])
-            value_input = input(f"Новое значение (текущее: {config.config[user_input]}): ").strip()
-            
-            try:
-                new_value = current_type(value_input)
-                config.set(user_input, new_value)
-                print(f"Обновлено {user_input} = {new_value}")
-            except ValueError:
-                print(f"Неверный тип значения. Ожидался {current_type.__name__}")
-            
-        except EOFError:
-            break
-    
+    print("-" * 40)
+    print(f"\nДля изменения настроек откройте файл '{config.filename}'")
+    print("и измените значения после знака '=' в соответствующих строках.")
     print("\nНажмите любую клавишу для возврата в меню...")
     wait_for_key()
 
