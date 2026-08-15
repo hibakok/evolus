@@ -8,6 +8,7 @@ import math
 import json
 import os
 import sys
+import io
 from dataclasses import dataclass, field
 from typing import Dict, List, Tuple, Optional, Set
 from enum import Enum
@@ -513,7 +514,7 @@ class PopulationManager:
         self.data_manager = data_manager
         self.mutator = mutator
         self.fitness_calc = fitness_calc
-        self.internal_population: List[Individual] = []
+        self.internal_population: List[Individual] = []  # Внутренняя популяция прародителей (неизменна в рамках поколения)
         self.generation = 0
     
     def initialize(self):
@@ -584,7 +585,20 @@ class PopulationManager:
         self.generation = 0
     
     def evolve_generation(self, num_generations: int, print_interval: int = 1) -> List[str]:
-        """Запускает эволюцию на указанное количество поколений с адаптивной мутацией"""
+        """
+        Запускает эволюцию на указанное количество поколений.
+        
+        Принцип работы:
+        1. Внутренняя популяция прародителей неизменна в начале каждого поколения
+        2. Каждый прародитель порождает N потомков (мутантов) во внешнюю популяцию
+        3. Потомки оцениваются по всем парам вход-выход
+        4. Лучший потомок сравнивается со своим родителем
+        5. Потомок заменяет родителя ТОЛЬКО если он строго лучше:
+           - Меньшая ошибка всегда лучше
+           - При РАВНОЙ ошибке (полностью равной) выбирается особь с меньшей сложностью
+           - Если более сложная особь имеет ХОТЯ БЫ ЧУТЬ меньшую ошибку - она лучше
+        6. Сравнение производится напрямую без штрафов за сложность
+        """
         progress_log = []
         
         # Адаптивные параметры мутации
@@ -598,14 +612,15 @@ class PopulationManager:
             # Выводим прогресс только в определенные интервалы
             should_log = (gen % print_interval == 0) or (gen == num_generations - 1)
             
-            # Каждая особь производит потомков
-            new_population = []
+            # Создаем копию внутренней популяции для замены (чтобы не менять во время оценки)
+            new_internal_population = []
             
+            # Для каждого прародителя создаем потомков и оцениваем их
             for parent_idx, parent in enumerate(self.internal_population):
                 num_offspring = self.config.get('offspring_per_individual')
                 
-                best_offspring = None
-                best_offspring_error = float('inf')
+                # Список всех потомков этого родителя для оценки
+                offspring_list = []
                 
                 for _ in range(num_offspring):
                     mutations = self.config.get('mutations_per_offspring')
@@ -614,42 +629,70 @@ class PopulationManager:
                     original_std = self.config.get('weight_mutation_std')
                     self.config.set('weight_mutation_std', current_mutation_std)
                     
+                    # Создаем мутантного потомка
                     offspring = self.mutator.mutate(parent, mutations)
                     
                     # Восстановить оригинальное значение (оно может быть изменено в config.txt)
                     self.config.set('weight_mutation_std', original_std)
                     
-                    # Гарантируем, что у потомка есть хотя бы некоторые связи, если у родителя их нет
+                    # Гарантируем, что у потомка есть хотя бы некоторые связи
                     if len(parent.connections) == 0 and len(offspring.connections) == 0:
-                        # Принудительно добавляем связь
                         self._force_add_connection(offspring)
                     
-                    # Оцениваем приспособленность потомка
-                    error, _ = self.fitness_calc.calculate(offspring)
-                    
-                    if error < best_offspring_error:
-                        best_offspring = offspring
-                        best_offspring_error = error
+                    offspring_list.append(offspring)
                 
-                # Сравниваем лучшего потомка с родителем
+                # Оцениваем всех потомков одновременно по всем парам вход-выход
+                for offspring in offspring_list:
+                    error, complexity = self.fitness_calc.calculate(offspring)
+                    offspring.fitness = error
+                    offspring.complexity = complexity
+                
+                # Находим лучшего потомка (с минимальной ошибкой, при равной ошибке - минимальной сложностью)
+                best_offspring = min(offspring_list, key=lambda x: (x.fitness, x.complexity))
+                
+                # Получаем ошибку родителя если еще не вычислена
                 parent_error = parent.fitness
                 if parent_error == float('inf'):
-                    parent_error, _ = self.fitness_calc.calculate(parent)
+                    parent_error, parent_complexity = self.fitness_calc.calculate(parent)
                     parent.fitness = parent_error
+                    parent.complexity = parent_complexity
                 
-                # Прямое сравнение: потомок заменяет родителя только если строго лучше
-                if best_offspring_error < parent_error - 1e-15:
-                    new_population.append(best_offspring)
-                elif abs(best_offspring_error - parent_error) <= 1e-15:
-                    # Равные ошибки, предпочитаем меньшую сложность
-                    if best_offspring.complexity < parent.complexity:
-                        new_population.append(best_offspring)
+                # ПРЯМОЕ СРАВНЕНИЕ без штрафов за сложность:
+                # 1. Если ошибка потомка < ошибки родителя - потомок лучше
+                # 2. Если ошибки РАВНЫ (полностью), то особь с меньшей сложностью лучше
+                # 3. Если ошибка потомка > ошибки родителя - родитель лучше
+                # 4. Если более сложная особь имеет ХОТЯ БЫ ЧУТЬ меньшую ошибку - она лучше
+                
+                offspring_error = best_offspring.fitness
+                offspring_complexity = best_offspring.complexity
+                parent_complexity = parent.complexity
+                
+                replace_parent = False
+                
+                # Проверяем: ошибка потомка меньше ошибки родителя?
+                if offspring_error < parent_error - 1e-15:
+                    # Потомок имеет меньшую ошибку - он лучше независимо от сложности
+                    replace_parent = True
+                elif abs(offspring_error - parent_error) <= 1e-15:
+                    # Ошибки РАВНЫ (полностью равны)
+                    # Выбираем особь с меньшей сложностью
+                    if offspring_complexity < parent_complexity:
+                        replace_parent = True
                     else:
-                        new_population.append(parent.clone())
+                        replace_parent = False
                 else:
-                    new_population.append(parent.clone())
+                    # Ошибка потомка больше - родитель лучше
+                    replace_parent = False
+                
+                if replace_parent:
+                    # Потомок заменяет родителя
+                    new_internal_population.append(best_offspring.clone())
+                else:
+                    # Родитель остается
+                    new_internal_population.append(parent.clone())
             
-            self.internal_population = new_population
+            # Обновляем внутреннюю популяцию
+            self.internal_population = new_internal_population
             
             # Записываем прогресс только если нужно
             if should_log:
@@ -681,7 +724,7 @@ class PopulationManager:
                             )
                 
                 progress_log.append(
-                    f"Поколение {self.generation}: Лучшая={best.fitness:.10f}, Средняя={avg_fitness:.10f}, "
+                    f"Поколение {self.generation}: Лучшая={best.fitness:.15f}, Средняя={avg_fitness:.15f}, "
                     f"Мутация={current_mutation_std:.4f}"
                 )
         
@@ -779,14 +822,20 @@ def clear_screen():
 def wait_for_key():
     """Wait for any key press"""
     if os.name == 'nt':
-        msvcrt.getch()
+        try:
+            msvcrt.getch()
+        except Exception:
+            pass
     else:
         fd = sys.stdin.fileno()
         try:
             old_settings = termios.tcgetattr(fd)
-        except termios.error:
-            # Неинтерактивный режим (пайп, редирект) - просто читаем строку
-            sys.stdin.read(1)
+        except (termios.error, io.UnsupportedOperation):
+            # Неинтерактивный режим (пайп, редирект) - просто читаем строку или пропускаем
+            try:
+                sys.stdin.read(1)
+            except Exception:
+                pass
             return
         try:
             tty.setraw(fd)
