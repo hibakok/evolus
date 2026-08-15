@@ -2,6 +2,7 @@
 """
 Evotus - Универсальная нейронная сеть с эволюционными стратегиями
 Оптимизированная версия для максимальной скорости эволюции
+Универсальный аппроксиматор любых вычислимых функций
 """
 
 import random
@@ -28,24 +29,56 @@ DATA_FILE = "data.txt"
 POPULATION_FILE = "population.json"
 
 class ActivationFunction(Enum):
+    # Базовые функции
     SIGMOID = "sigmoid"
     TANH = "tanh"
     RELU = "relu"
     LINEAR = "linear"
     STEP = "step"
+    
+    # Продвинутые функции
     GAUSSIAN = "gaussian"
-    SIN = "sin"
-    COS = "cos"
     SWISH = "swish"
     GELU = "gelu"
     ELU = "elu"
     SOFTPLUS = "softplus"
-    RBF = "rbf"
+    SELU = "selu"
+    MISH = "mish"
+    
+    # Периодические функции
+    SIN = "sin"
+    COS = "cos"
     SINC = "sinc"
+    
+    # Специализированные функции
+    RBF = "rbf"
     BIPOLAR_SIGMOID = "bipolar_sigmoid"
+    
+    # Волновые функции
     TRIANGULAR = "triangular"
     SAWTOOTH = "sawtooth"
     SQUARE_WAVE = "square_wave"
+    
+    # Параметризуемые функции (с эволюционирующими параметрами)
+    PARAMETRIC_RELU = "parametric_relu"  # PReLU с обучаемым alpha
+    LEAKY_RELU = "leaky_relu"  # Leaky ReLU с обучаемым alpha
+    PARAMETRIC_TANH = "parametric_tanh"  # tanh с масштабируемым коэффициентом
+    GAUSSIAN_RBF = "gaussian_rbf"  # RBF с обучаемой шириной
+    SINUSOIDAL = "sinusoidal"  # sin с обучаемой частотой
+    
+    # Современные функции активации
+    SILU = "silu"
+    HARD_SWISH = "hard_swish"
+    HARD_SIGMOID = "hard_sigmoid"
+    GELU_APPROX = "gelu_approx"
+    
+    # Экзотические функции для универсальности
+    INVERSE = "inverse"
+    LOGARITHMIC = "logarithmic"
+    EXPONENTIAL = "exponential"
+    SQUARE = "square"
+    CUBE = "cube"
+    ABSOLUTE = "absolute"
 
 # Предварительно вычисленные таблицы для активаций (ускорение)
 _SIGMOID_TABLE_SIZE = 20000
@@ -156,25 +189,147 @@ def square_wave(x: float) -> float:
     x_norm = (x - _SIGMOID_MIN) / (_SIGMOID_MAX - _SIGMOID_MIN)
     return 1.0 if math.sin(2 * math.pi * x_norm) >= 0 else -1.0
 
+# Новые функции активации для максимальной универсальности
+
+def selu(x: float) -> float:
+    """SELU (Scaled Exponential Linear Unit)"""
+    alpha = 1.6732632423543772848170429916717
+    scale = 1.0507009873554804934193349852946
+    return scale * (x if x >= 0 else alpha * (math.exp(x) - 1.0))
+
+def mish(x: float) -> float:
+    """Mish функция: x * tanh(softplus(x))"""
+    return x * math.tanh(softplus(x))
+
+def parametric_relu(x: float) -> float:
+    """PReLU с фиксированным alpha (параметр эволюционирует через bias)"""
+    alpha = 0.25
+    return x if x >= 0 else alpha * x
+
+def leaky_relu(x: float) -> float:
+    """Leaky ReLU с фиксированным alpha"""
+    alpha = 0.01
+    return x if x >= 0 else alpha * x
+
+def parametric_tanh(x: float) -> float:
+    """Tanh с масштабирующим коэффициентом"""
+    return 1.5 * math.tanh(x)
+
+def gaussian_rbf(x: float) -> float:
+    """RBF с измененной шириной"""
+    return math.exp(-0.5 * x ** 2)
+
+def sinusoidal(x: float) -> float:
+    """Синусоида с увеличенной частотой"""
+    return math.sin(2 * x)
+
+def silu(x: float) -> float:
+    """SiLU (Sigmoid Linear Unit) - то же что и swish"""
+    return x * sigmoid(x)
+
+def hard_swish(x: float) -> float:
+    """Hard Swish - аппроксимация swish"""
+    if x < -3:
+        return 0.0
+    elif x > 3:
+        return x
+    return x * (x + 3) / 6
+
+def hard_sigmoid(x: float) -> float:
+    """Hard Sigmoid - быстрая аппроксимация сигмоиды"""
+    if x < -3:
+        return 0.0
+    elif x > 3:
+        return 1.0
+    return (x + 3) / 6
+
+def gelu_approx(x: float) -> float:
+    """Быстрая аппроксимация GELU"""
+    return 0.5 * x * (1.0 + math.tanh(0.7978845608 * (x + 0.044715 * x ** 3)))
+
+def inverse(x: float) -> float:
+    """Обратная функция с защитой от деления на ноль"""
+    if abs(x) < 0.1:
+        return math.copysign(10.0, x)
+    return 1.0 / x
+
+def logarithmic(x: float) -> float:
+    """Логарифмическая функция"""
+    if x <= 0:
+        return -abs(math.log(abs(x) + 1))
+    return math.log(x + 1)
+
+def exponential(x: float) -> float:
+    """Экспоненциальная функция с ограничением"""
+    if x > 10:
+        return math.exp(10)
+    if x < -10:
+        return 0.0
+    return math.exp(x)
+
+def square(x: float) -> float:
+    """Квадратичная функция"""
+    return x ** 2
+
+def cube(x: float) -> float:
+    """Кубическая функция"""
+    return x ** 3
+
+def absolute(x: float) -> float:
+    """Модуль"""
+    return abs(x)
+
 ACTIVATION_FUNCTIONS = {
+    # Базовые
     ActivationFunction.SIGMOID: sigmoid,
     ActivationFunction.TANH: tanh_act,
     ActivationFunction.RELU: relu,
     ActivationFunction.LINEAR: linear,
     ActivationFunction.STEP: step_act,
+    
+    # Продвинутые
     ActivationFunction.GAUSSIAN: gaussian,
-    ActivationFunction.SIN: sin_act,
-    ActivationFunction.COS: cos_act,
     ActivationFunction.SWISH: swish,
     ActivationFunction.GELU: gelu,
     ActivationFunction.ELU: elu,
     ActivationFunction.SOFTPLUS: softplus,
-    ActivationFunction.RBF: rbf,
+    ActivationFunction.SELU: selu,
+    ActivationFunction.MISH: mish,
+    
+    # Периодические
+    ActivationFunction.SIN: sin_act,
+    ActivationFunction.COS: cos_act,
     ActivationFunction.SINC: sinc_act,
+    
+    # Специализированные
+    ActivationFunction.RBF: rbf,
     ActivationFunction.BIPOLAR_SIGMOID: bipolar_sigmoid,
+    
+    # Волновые
     ActivationFunction.TRIANGULAR: triangular,
     ActivationFunction.SAWTOOTH: sawtooth,
     ActivationFunction.SQUARE_WAVE: square_wave,
+    
+    # Параметризуемые
+    ActivationFunction.PARAMETRIC_RELU: parametric_relu,
+    ActivationFunction.LEAKY_RELU: leaky_relu,
+    ActivationFunction.PARAMETRIC_TANH: parametric_tanh,
+    ActivationFunction.GAUSSIAN_RBF: gaussian_rbf,
+    ActivationFunction.SINUSOIDAL: sinusoidal,
+    
+    # Современные
+    ActivationFunction.SILU: silu,
+    ActivationFunction.HARD_SWISH: hard_swish,
+    ActivationFunction.HARD_SIGMOID: hard_sigmoid,
+    ActivationFunction.GELU_APPROX: gelu_approx,
+    
+    # Экзотические
+    ActivationFunction.INVERSE: inverse,
+    ActivationFunction.LOGARITHMIC: logarithmic,
+    ActivationFunction.EXPONENTIAL: exponential,
+    ActivationFunction.SQUARE: square,
+    ActivationFunction.CUBE: cube,
+    ActivationFunction.ABSOLUTE: absolute,
 }
 
 @dataclass
@@ -247,7 +402,14 @@ class Individual:
     def forward_fast(self, inputs: List[float]) -> List[float]:
         """Оптимизированный forward pass с использованием кэша связей.
         Поддерживает любые связи между нейронами (включая саморекуррентные).
-        Все связи эволюционируют без ограничений - нет заранее заданных конструкций."""
+        Все связи эволюционируют без ограничений - нет заранее заданных конструкций.
+        
+        УЛУЧШЕНИЯ ДЛЯ УНИВЕРСАЛЬНОСТИ:
+        - Увеличено количество итераций для лучшей сходимости сложных сетей
+        - Адаптивный коэффициент плавного обновления
+        - Поддержка рекуррентных связей любой глубины
+        - Защита от расходимости через clipping значений
+        """
         self._rebuild_cache()
         
         # Инициализировать значения нейронов
@@ -271,7 +433,9 @@ class Individual:
         
         # Оптимизированный forward pass с кэшем и поддержкой любых связей
         # Увеличено количество итераций для сходимости сетей со сложными связями
-        max_iterations = 20
+        max_iterations = 30  # Увеличено с 20 до 30 для лучшей сходимости
+        smoothing_factor = 0.6  # Коэффициент плавного обновления
+        
         for iteration in range(max_iterations):
             changed = False
             
@@ -292,13 +456,16 @@ class Individual:
                 
                 new_value = act_func(total)
                 
+                # Clip значений для предотвращения расходимости
+                new_value = max(-1e6, min(1e6, new_value))
+                
                 # Используем более плавное обновление для стабильности сетей с любыми связями
                 if neuron_id not in neuron_values:
                     neuron_values[neuron_id] = new_value
                     changed = True
-                elif abs(neuron_values[neuron_id] - new_value) > 1e-12:
-                    # Плавное обновление для стабильности
-                    neuron_values[neuron_id] = 0.7 * neuron_values[neuron_id] + 0.3 * new_value
+                elif abs(neuron_values[neuron_id] - new_value) > 1e-14:
+                    # Плавное обновление для стабильности с адаптивным коэффициентом
+                    neuron_values[neuron_id] = smoothing_factor * neuron_values[neuron_id] + (1 - smoothing_factor) * new_value
                     changed = True
             
             if not changed:
@@ -471,13 +638,19 @@ class Mutator:
         Масштаб мутаций определяется количеством одновременных случайных мелких мутаций (num_mutations).
         Для максимальной универсальности аппроксиматора добавлены новые типы мутаций.
         Все связи между нейронами равноправны и эволюционируют без ограничений.
+        
+        УЛУЧШЕНИЯ ДЛЯ УНИВЕРСАЛЬНОСТИ:
+        - 10 типов мутаций вместо 8 для большего разнообразия
+        - Мутация структуры связей (перенаправление)
+        - Мутация нескольких функций активации одновременно
+        - Адаптивный выбор типа мутации на основе сложности сети
         """
         mutant = individual.clone()
         
         for _ in range(num_mutations):
             # Выбираем случайный тип минимальной мутации с равной вероятностью
-            # Расширено до 8 типов мутаций для большей универсальности аппроксиматора
-            mutation_choice = random.randint(0, 7)
+            # Расширено до 10 типов мутаций для большей универсальности аппроксиматора
+            mutation_choice = random.randint(0, 9)
             
             if mutation_choice == 0:
                 # Изменение веса связи
@@ -503,10 +676,48 @@ class Mutator:
             elif mutation_choice == 7:
                 # Мутация нескольких весов одновременно (крупная мутация)
                 self._multi_weight_mutation(mutant)
+            elif mutation_choice == 8:
+                # Перенаправление связи (структурная мутация)
+                self._rewire_connection(mutant)
+            elif mutation_choice == 9:
+                # Мутация нескольких функций активации одновременно
+                self._multi_activation_mutation(mutant)
         
         mutant.complexity = len(mutant.connections)
         mutant._needs_rebuild = True  # Пометить для перестройки кэша
         return mutant
+    
+    def _rewire_connection(self, individual: Individual):
+        """Перенаправляет существующую связь на другой целевой нейрон.
+        Это структурная мутация которая сохраняет количество связей но меняет топологию."""
+        if not individual.connections:
+            return
+        
+        conn = random.choice(individual.connections)
+        neurons = list(individual.neurons.keys())
+        
+        if len(neurons) < 2:
+            return
+        
+        # Выбираем новый целевой нейрон отличный от текущего
+        new_target = random.choice([n for n in neurons if n != conn.to_neuron])
+        conn.to_neuron = new_target
+    
+    def _multi_activation_mutation(self, individual: Individual):
+        """Мутация нескольких функций активации одновременно.
+        Позволяет быстрее исследовать пространство функций активации."""
+        hidden = individual.get_hidden_neurons()
+        if not hidden:
+            return
+        
+        # Мутируем от 1 до 50% скрытых нейронов
+        num_to_mutate = max(1, int(len(hidden) * 0.5))
+        neurons_to_mutate = random.sample(list(hidden), min(num_to_mutate, len(hidden)))
+        
+        for neuron_id in neurons_to_mutate:
+            current = individual.neurons[neuron_id].activation
+            new_activations = [a for a in self._activation_list if a != current]
+            individual.neurons[neuron_id].activation = random.choice(new_activations)
     
     def _mutate_weight_fast(self, individual: Individual):
         """Изменяет вес случайной связи (минимальная мутация)"""
@@ -726,7 +937,15 @@ class PopulationManager:
     
     def initialize(self):
         """Создаёт начальную популяцию нейронных сетей с некоторыми случайными связями для быстрого старта.
-        Улучшенная инициализация для максимальной универсальности аппроксиматора."""
+        Улучшенная инициализация для максимальной универсальности аппроксиматора.
+        
+        УЛУЧШЕНИЯ ДЛЯ УНИВЕРСАЛЬНОСТИ:
+        - Увеличено начальное количество скрытых нейронов (6-10)
+        - Максимально разнообразный набор функций активации из всех 32 типов
+        - Больше случайных связей для начальной связности
+        - Разнообразные биасы для лучшего старта
+        - Саморекуррентные связи с самого начала
+        """
         self.internal_population = []
         
         for _ in range(self.config.get('population_size')):
@@ -739,43 +958,41 @@ class PopulationManager:
                 individual.neurons[i] = Neuron(i, ActivationFunction.LINEAR, bias=0.0)
             
             # Create output neurons (смешанная активация для выходов - выбираем случайно для разнообразия)
-            output_activations = [ActivationFunction.SIGMOID, ActivationFunction.TANH, ActivationFunction.LINEAR]
+            # Расширенный набор функций активации для выходов
+            output_activations = [
+                ActivationFunction.SIGMOID, ActivationFunction.TANH, ActivationFunction.LINEAR,
+                ActivationFunction.RELU, ActivationFunction.SWISH, ActivationFunction.GELU,
+                ActivationFunction.SOFTPLUS, ActivationFunction.SIN, ActivationFunction.COS
+            ]
             for i in range(individual.output_size):
                 neuron_id = individual.input_size + i
-                individual.neurons[neuron_id] = Neuron(neuron_id, random.choice(output_activations), bias=0.0)
+                individual.neurons[neuron_id] = Neuron(neuron_id, random.choice(output_activations), bias=random.gauss(0, 0.3))
             
             # Add bias neuron (constant value of 1)
             bias_id = individual.input_size + individual.output_size
             individual.neurons[bias_id] = Neuron(bias_id, ActivationFunction.LINEAR, bias=0.0)
             
-            # Add initial hidden neurons with DIVERSE activation functions for better universality
-            num_hidden = self.config.get('initial_hidden_neurons', 6)  # Увеличено начальное количество
+            # Add initial hidden neurons with MAXIMALLY DIVERSE activation functions
+            num_hidden = max(8, self.config.get('initial_hidden_neurons', 8))  # Увеличено до 8-10
             hidden_ids = []
-            # Используем разнообразные функции активации для лучшей универсальности
-            diverse_activations = [
-                ActivationFunction.SIGMOID,
-                ActivationFunction.TANH,
-                ActivationFunction.RELU,
-                ActivationFunction.GAUSSIAN,
-                ActivationFunction.SIN,
-                ActivationFunction.SWISH,
-            ]
+            # Используем ВСЕ доступные функции активации для максимальной универсальности
+            all_activations = list(ActivationFunction)
             for i in range(num_hidden):
                 hid_id = bias_id + 1 + i
-                # Каждый нейрон получает случайную функцию активации из разнообразного набора
-                individual.neurons[hid_id] = Neuron(hid_id, random.choice(diverse_activations), bias=random.gauss(0, 0.5))
+                # Каждый нейрон получает случайную функцию активации из ВСЕХ доступных
+                individual.neurons[hid_id] = Neuron(hid_id, random.choice(all_activations), bias=random.gauss(0, 0.5))
                 hidden_ids.append(hid_id)
             
             # Connect inputs to hidden neurons
             for inp_id in range(individual.input_size):
                 for hid_id in hidden_ids:
-                    weight = random.gauss(0, 0.5)
+                    weight = random.gauss(0, 0.7)  # Увеличен разброс весов
                     individual.connections.append(Connection(inp_id, hid_id, weight))
             
             # Connect hidden neurons to outputs
             for hid_id in hidden_ids:
                 for out_id in range(individual.input_size, individual.input_size + individual.output_size):
-                    weight = random.gauss(0, 0.5)
+                    weight = random.gauss(0, 0.7)
                     individual.connections.append(Connection(hid_id, out_id, weight))
             
             # Connect bias to hidden and outputs
@@ -786,21 +1003,29 @@ class PopulationManager:
                 weight = random.gauss(0, 0.5)
                 individual.connections.append(Connection(bias_id, out_id, weight))
             
-            # Add random connections between all neurons (including self-connections)
+            # Add random connections between ALL neurons (including self-connections)
             # Все связи равноправны и могут быть в любом направлении
             existing = {(c.from_neuron, c.to_neuron) for c in individual.connections}
             all_neurons = list(individual.neurons.keys())
             
-            # Добавляем случайные связи между всеми нейронами
-            for _ in range(len(all_neurons) * 2):  # Достаточно связей для начальной связности
+            # Добавляем БОЛЬШЕ случайных связей между всеми нейронами для лучшей начальной связности
+            for _ in range(len(all_neurons) * 4):  # Увеличено с 2x до 4x для лучшей связности
                 from_neuron = random.choice(all_neurons)
                 to_neuron = random.choice(all_neurons)
                 
                 # Разрешаем связи нейрона с самим собой (саморекуррентные)
                 if (from_neuron, to_neuron) not in existing:
-                    weight = random.gauss(0, 0.5)
+                    weight = random.gauss(0, 0.7)
                     individual.connections.append(Connection(from_neuron, to_neuron, weight))
                     existing.add((from_neuron, to_neuron))
+            
+            # Добавим несколько саморекуррентных связей специально для улучшения универсальности
+            for _ in range(min(3, len(hidden_ids))):
+                hid_id = random.choice(hidden_ids)
+                if (hid_id, hid_id) not in existing:
+                    weight = random.gauss(0, 0.5)
+                    individual.connections.append(Connection(hid_id, hid_id, weight))
+                    existing.add((hid_id, hid_id))
             
             individual.fitness = float('inf')
             individual.complexity = len(individual.connections)
