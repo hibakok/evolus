@@ -243,14 +243,17 @@ class ConfigManager:
     def __init__(self, filename: str = CONFIG_FILE):
         self.filename = filename
         self.config = {
-            'population_size': 20,
-            'offspring_per_individual': 3,
+            'population_size': 50,
+            'offspring_per_individual': 4,
             'mutations_per_offspring': 5,
             'mutation_rate_weight': 0.3,
             'mutation_rate_connection': 0.2,
             'mutation_rate_neuron': 0.2,
             'mutation_rate_activation': 0.3,
             'weight_mutation_std': 0.5,
+            'min_mutation_std': 0.01,
+            'max_mutation_std': 2.0,
+            'initial_hidden_neurons': 4,
         }
         self.load()
     
@@ -335,23 +338,40 @@ class Mutator:
             return
         
         neurons = list(individual.neurons.keys())
+        input_neurons = set(range(individual.input_size))
+        output_neurons = set(range(individual.input_size, individual.input_size + individual.output_size))
+        hidden_neurons = [n for n in neurons if n not in input_neurons and n not in output_neurons]
         
-        # Попытаться добавить связь от входа/скрытого к выходу/скрытому
-        # Это обеспечивает передачу сигнала
-        max_attempts = 50
+        # Приоритет 1: Связь вход -> скрытый или скрытый -> выход
+        # Это критически важно для XOR и других нелинейных задач
+        max_attempts = 100
         for _ in range(max_attempts):
-            from_neuron = random.choice(neurons)
-            to_neuron = random.choice(neurons)
+            r = random.random()
             
-            if from_neuron == to_neuron:
-                continue
+            if r < 0.4 and hidden_neurons:
+                # Вход -> Скрытый
+                from_neuron = random.choice(list(input_neurons))
+                to_neuron = random.choice(hidden_neurons)
+            elif r < 0.8 and hidden_neurons:
+                # Скрытый -> Выход
+                from_neuron = random.choice(hidden_neurons)
+                to_neuron = random.choice(list(output_neurons))
+            elif r < 0.9 and hidden_neurons and len(hidden_neurons) > 1:
+                # Скрытый -> Скрытый (рекуррентность)
+                h1, h2 = random.sample(hidden_neurons, 2)
+                from_neuron, to_neuron = h1, h2
+            else:
+                # Любая связь
+                from_neuron = random.choice(neurons)
+                to_neuron = random.choice(neurons)
+                if from_neuron == to_neuron:
+                    continue
             
             # Проверить, существует ли уже связь
-            exists = False
-            for conn in individual.connections:
-                if conn.from_neuron == from_neuron and conn.to_neuron == to_neuron:
-                    exists = True
-                    break
+            exists = any(
+                conn.from_neuron == from_neuron and conn.to_neuron == to_neuron 
+                for conn in individual.connections
+            )
             
             if not exists:
                 weight = random.gauss(0, 1.0)
@@ -359,7 +379,28 @@ class Mutator:
                 return
     
     def _remove_connection(self, individual: Individual):
-        if individual.connections:
+        if len(individual.connections) <= 5:  # Оставить минимум связей
+            return
+        
+        # Не удалять критические связи (вход->скрытый, скрытый->выход) если связей мало
+        input_neurons = set(range(individual.input_size))
+        output_neurons = set(range(individual.input_size, individual.input_size + individual.output_size))
+        hidden_neurons = set(n for n in individual.neurons if n not in input_neurons and n not in output_neurons)
+        
+        # Найти некритичные связи (скрытый->скрытый или лишние)
+        removable = []
+        for conn in individual.connections:
+            # Всегда можно удалить скрытый->скрытый
+            if conn.from_neuron in hidden_neurons and conn.to_neuron in hidden_neurons:
+                removable.append(conn)
+            # Можно удалить вход->выход (прямая связь не нужна для XOR)
+            elif conn.from_neuron in input_neurons and conn.to_neuron in output_neurons:
+                removable.append(conn)
+        
+        if removable:
+            individual.connections.remove(random.choice(removable))
+        elif individual.connections:
+            # Если нет "безопасных" связей, удалить любую кроме минимума
             individual.connections.pop(random.randrange(len(individual.connections)))
     
     def _add_neuron(self, individual: Individual):
@@ -476,7 +517,7 @@ class PopulationManager:
         self.generation = 0
     
     def initialize(self):
-        """Создаёт начальную нулевую популяцию нейронных сетей с некоторыми случайными связями"""
+        """Создаёт начальную популяцию нейронных сетей с некоторыми случайными связями для быстрого старта"""
         self.internal_population = []
         
         for _ in range(self.config.get('population_size')):
@@ -497,17 +538,43 @@ class PopulationManager:
             bias_id = individual.input_size + individual.output_size
             individual.neurons[bias_id] = Neuron(bias_id, ActivationFunction.LINEAR)
             
-            # Add some initial random connections to kickstart evolution
-            # Connect each input to each output with small random weights
+            # Add initial hidden neurons for better starting point
+            num_hidden = self.config.get('initial_hidden_neurons', 4)
+            hidden_ids = []
+            for i in range(num_hidden):
+                hid_id = bias_id + 1 + i
+                individual.neurons[hid_id] = Neuron(hid_id, ActivationFunction.SIGMOID)
+                hidden_ids.append(hid_id)
+            
+            # Connect inputs to hidden neurons
             for inp_id in range(individual.input_size):
+                for hid_id in hidden_ids:
+                    weight = random.gauss(0, 0.5)
+                    individual.connections.append(Connection(inp_id, hid_id, weight))
+            
+            # Connect hidden neurons to outputs
+            for hid_id in hidden_ids:
                 for out_id in range(individual.input_size, individual.input_size + individual.output_size):
                     weight = random.gauss(0, 0.5)
-                    individual.connections.append(Connection(inp_id, out_id, weight))
+                    individual.connections.append(Connection(hid_id, out_id, weight))
             
-            # Connect bias to outputs
+            # Connect bias to hidden and outputs
+            for hid_id in hidden_ids:
+                weight = random.gauss(0, 0.5)
+                individual.connections.append(Connection(bias_id, hid_id, weight))
             for out_id in range(individual.input_size, individual.input_size + individual.output_size):
                 weight = random.gauss(0, 0.5)
                 individual.connections.append(Connection(bias_id, out_id, weight))
+            
+            # Add some random recurrent connections between hidden neurons
+            for i, h1 in enumerate(hidden_ids):
+                for h2 in hidden_ids[i+1:]:
+                    if random.random() < 0.3:
+                        weight = random.gauss(0, 0.5)
+                        if random.random() < 0.5:
+                            individual.connections.append(Connection(h1, h2, weight))
+                        else:
+                            individual.connections.append(Connection(h2, h1, weight))
             
             individual.fitness = float('inf')
             individual.complexity = len(individual.connections)
@@ -517,8 +584,13 @@ class PopulationManager:
         self.generation = 0
     
     def evolve_generation(self, num_generations: int) -> List[str]:
-        """Запускает эволюцию на указанное количество поколений"""
+        """Запускает эволюцию на указанное количество поколений с адаптивной мутацией"""
         progress_log = []
+        
+        # Адаптивные параметры мутации
+        current_mutation_std = self.config.get('weight_mutation_std', 0.5)
+        stagnation_counter = 0
+        best_ever_fitness = float('inf')
         
         for gen in range(num_generations):
             self.generation += 1
@@ -534,7 +606,15 @@ class PopulationManager:
                 
                 for _ in range(num_offspring):
                     mutations = self.config.get('mutations_per_offspring')
+                    
+                    # Адаптировать силу мутаций на лету
+                    original_std = self.config.get('weight_mutation_std')
+                    self.config.set('weight_mutation_std', current_mutation_std)
+                    
                     offspring = self.mutator.mutate(parent, mutations)
+                    
+                    # Восстановить оригинальное значение (оно может быть изменено в config.txt)
+                    self.config.set('weight_mutation_std', original_std)
                     
                     # Гарантируем, что у потомка есть хотя бы некоторые связи, если у родителя их нет
                     if len(parent.connections) == 0 and len(offspring.connections) == 0:
@@ -571,8 +651,34 @@ class PopulationManager:
             # Записываем прогресс
             best = min(self.internal_population, key=lambda x: x.fitness)
             avg_fitness = sum(ind.fitness for ind in self.internal_population) / len(self.internal_population)
+            
+            # Проверка на улучшение для адаптации мутаций
+            if best.fitness < best_ever_fitness - 1e-12:
+                best_ever_fitness = best.fitness
+                stagnation_counter = 0
+                # Уменьшить силу мутаций для точной настройки
+                current_mutation_std = max(
+                    self.config.get('min_mutation_std', 0.01),
+                    current_mutation_std * 0.95
+                )
+            else:
+                stagnation_counter += 1
+                # Если застой, увеличить разнообразие мутаций
+                if stagnation_counter > 20:
+                    current_mutation_std = min(
+                        self.config.get('max_mutation_std', 2.0),
+                        current_mutation_std * 1.1
+                    )
+                    if stagnation_counter > 50:
+                        # Сильный застой - резкое увеличение мутаций
+                        current_mutation_std = min(
+                            self.config.get('max_mutation_std', 2.0),
+                            current_mutation_std * 1.5
+                        )
+            
             progress_log.append(
-                f"Поколение {self.generation}: Лучшая={best.fitness:.10f}, Средняя={avg_fitness:.10f}"
+                f"Поколение {self.generation}: Лучшая={best.fitness:.10f}, Средняя={avg_fitness:.10f}, "
+                f"Мутация={current_mutation_std:.4f}"
             )
         
         return progress_log
