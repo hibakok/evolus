@@ -884,7 +884,7 @@ class Mutator:
                     u2 = 0.001 if u2 >= 0 else -0.001
                 mutation = u1 / u2 * base_std
         
-        conn.weight += mutation
+        conn.weight += to_decimal(mutation)
     
     def _mutate_bias_fast(self, individual: Individual):
         """Изменяет биас случайного нейрона (минимальная мутация)
@@ -904,14 +904,14 @@ class Mutator:
         # Адаптивный выбор типа мутации
         if random.random() < 0.75:
             # Гауссова мутация для тонкой настройки
-            neuron.bias += random.gauss(0, base_std * 0.8)
+            neuron.bias += to_decimal(random.gauss(0, base_std * 0.8))
         else:
             # Коши-мутация для больших скачков
             u1 = random.gauss(0, 1)
             u2 = random.gauss(0, 1)
             if abs(u2) < 0.001:
                 u2 = 0.001 if u2 >= 0 else -0.001
-            neuron.bias += u1 / u2 * base_std
+            neuron.bias += to_decimal(u1 / u2 * base_std)
     
     def _add_connection_fast(self, individual: Individual):
         """Добавляет связь между любыми двумя нейронами.
@@ -937,7 +937,7 @@ class Mutator:
             
             # Проверяем, что такой связи ещё нет
             if (from_neuron, to_neuron) not in existing:
-                individual.connections.append(Connection(from_neuron, to_neuron, random.gauss(0, 1.0)))
+                individual.connections.append(Connection(from_neuron, to_neuron, to_decimal(random.gauss(0, 1.0))))
                 return
     
     def _remove_connection_fast(self, individual: Individual):
@@ -1040,7 +1040,7 @@ class Mutator:
                 mutation = direction * step_size + random.gauss(0, base_std * 0.5)
             elif mutation_type < 0.8:
                 # Гауссова мутация (20%)
-                mutation = random.gauss(0, base_std * 2.0)
+                mutation = to_decimal(random.gauss(0, base_std * 2.0))
             else:
                 # Коши-мутация для больших скачков (20%)
                 u1 = random.gauss(0, 1)
@@ -1049,7 +1049,7 @@ class Mutator:
                     u2 = 0.001 if u2 >= 0 else -0.001
                 mutation = u1 / u2 * base_std * 2.0
             
-            conn.weight += mutation
+            conn.weight += to_decimal(mutation)
 
 
 class FitnessCalculator:
@@ -1214,21 +1214,21 @@ class PopulationManager:
             # Connect inputs to hidden neurons
             for inp_id in range(individual.input_size):
                 for hid_id in hidden_ids:
-                    weight = random.gauss(0, 0.7)  # Увеличен разброс весов
+                    weight = to_decimal(random.gauss(0, 0.7))  # Увеличен разброс весов
                     individual.connections.append(Connection(inp_id, hid_id, weight))
             
             # Connect hidden neurons to outputs
             for hid_id in hidden_ids:
                 for out_id in range(individual.input_size, individual.input_size + individual.output_size):
-                    weight = random.gauss(0, 0.7)
+                    weight = to_decimal(random.gauss(0, 0.7))
                     individual.connections.append(Connection(hid_id, out_id, weight))
             
             # Connect bias to hidden and outputs
             for hid_id in hidden_ids:
-                weight = random.gauss(0, 0.5)
+                weight = to_decimal(random.gauss(0, 0.5))
                 individual.connections.append(Connection(bias_id, hid_id, weight))
             for out_id in range(individual.input_size, individual.input_size + individual.output_size):
-                weight = random.gauss(0, 0.5)
+                weight = to_decimal(random.gauss(0, 0.5))
                 individual.connections.append(Connection(bias_id, out_id, weight))
             
             # Add random connections between ALL neurons (including self-connections)
@@ -1243,7 +1243,7 @@ class PopulationManager:
                 
                 # Разрешаем связи нейрона с самим собой (саморекуррентные)
                 if (from_neuron, to_neuron) not in existing:
-                    weight = random.gauss(0, 0.7)
+                    weight = to_decimal(random.gauss(0, 0.7))
                     individual.connections.append(Connection(from_neuron, to_neuron, weight))
                     existing.add((from_neuron, to_neuron))
             
@@ -1251,7 +1251,7 @@ class PopulationManager:
             for _ in range(min(3, len(hidden_ids))):
                 hid_id = random.choice(hidden_ids)
                 if (hid_id, hid_id) not in existing:
-                    weight = random.gauss(0, 0.5)
+                    weight = to_decimal(random.gauss(0, 0.5))
                     individual.connections.append(Connection(hid_id, hid_id, weight))
                     existing.add((hid_id, hid_id))
             
@@ -1482,7 +1482,7 @@ class PopulationManager:
                     break
             
             if not exists:
-                weight = random.gauss(0, 1.0)
+                weight = to_decimal(random.gauss(0, 1.0))
                 individual.connections.append(Connection(from_neuron, to_neuron, weight))
                 return
         
@@ -1493,7 +1493,7 @@ class PopulationManager:
                     exists = any(c.from_neuron == from_n and c.to_neuron == to_n 
                                 for c in individual.connections)
                     if not exists:
-                        weight = random.gauss(0, 1.0)
+                        weight = to_decimal(random.gauss(0, 1.0))
                         individual.connections.append(Connection(from_n, to_n, weight))
                         return
     
@@ -1569,6 +1569,7 @@ def show_menu() -> int:
     print("7. Просмотреть/редактировать обучающие данные")
     print("8. Экспортировать лучшую особь в файл")
     print("9. Импортировать особь из файла")
+    print("10. Провести множество тестов эволюции")
     print("0. Выход")
     print("\n" + "=" * 60)
     
@@ -1616,6 +1617,181 @@ def run_evolution(pop_manager: PopulationManager):
     print(f"Сложность: {best.complexity}")
     print(f"Нейроны: {len(best.neurons)}")
     print(f"Связи: {len(best.connections)}")
+    
+    print("\nНажмите любую клавишу для возврата в меню...")
+    wait_for_key()
+
+
+def run_evolution_tests(config: ConfigManager, data_manager: DataManager, 
+                        mutator: Mutator, fitness_calc: FitnessCalculator):
+    """
+    Запускает множество тестов эволюции с различными параметрами.
+    Использует значения по умолчанию для population_size и offspring_per_individual.
+    
+    Тестируются следующие варианты:
+    1. Разное количество мутаций (3, 5, 8, 12)
+    2. Разное количество поколений (100, 500, 1000)
+    3. Разная сила мутаций (0.3, 0.6, 1.0)
+    4. Комбинации параметров для поиска оптимальной конфигурации
+    """
+    clear_screen()
+    print("=" * 60)
+    print("ТЕСТИРОВАНИЕ ЭВОЛЮЦИИ - МНОЖЕСТВЕННЫЕ ЗАПУСКИ")
+    print("=" * 60)
+    print("\nБудут проведены тесты с различными параметрами эволюции.")
+    print("Используются значения по умолчанию:")
+    print("  - population_size = 1")
+    print("  - offspring_per_individual = 1")
+    print("\nПараметры для тестирования:")
+    print("  - mutations_per_offspring: [3, 5, 8, 12]")
+    print("  - outer_population_mutations: [3, 5, 8, 12]")
+    print("  - weight_mutation_std: [0.3, 0.6, 1.0]")
+    print("  - generations: [100, 500, 1000]")
+    print("-" * 60)
+    
+    try:
+        confirm = input("Продолжить? (y/n): ").strip().lower()
+        if confirm != 'y':
+            return
+    except (ValueError, EOFError):
+        return
+    
+    # Параметры для тестирования
+    mutation_counts = [3, 5, 8, 12]
+    mutation_stds = [0.3, 0.6, 1.0]
+    generation_counts = [100, 500, 1000]
+    
+    results = []
+    test_num = 0
+    total_tests = len(mutation_counts) * len(mutation_stds) * len(generation_counts)
+    
+    print(f"\nВсего тестов: {total_tests}")
+    print("Начало тестирования...\n")
+    
+    for gens in generation_counts:
+        for mut_count in mutation_counts:
+            for std in mutation_stds:
+                test_num += 1
+                
+                # Создаем новый менеджер популяции для каждого теста
+                pop_manager = PopulationManager(config, data_manager, mutator, fitness_calc)
+                pop_manager.initialize()
+                
+                # Устанавливаем параметры для текущего теста
+                original_mutations = config.get('outer_population_mutations')
+                original_std = config.get('weight_mutation_std')
+                
+                config.set('outer_population_mutations', mut_count)
+                config.set('weight_mutation_std', std)
+                
+                print(f"[{test_num}/{total_tests}] Тест: поколений={gens}, мутаций={mut_count}, std={std}")
+                sys.stdout.flush()
+                
+                # Запускаем эволюцию без вывода прогресса
+                start_time = __import__('time').time()
+                progress = pop_manager.evolve_generation(gens, print_interval=gens)
+                end_time = __import__('time').time()
+                
+                # Получаем лучший результат
+                best = pop_manager.get_best()
+                
+                # Восстанавливаем оригинальные настройки
+                config.set('outer_population_mutations', original_mutations)
+                config.set('weight_mutation_std', original_std)
+                
+                # Сохраняем результат
+                results.append({
+                    'test_num': test_num,
+                    'generations': gens,
+                    'mutations': mut_count,
+                    'std': std,
+                    'fitness': best.fitness,
+                    'complexity': best.complexity,
+                    'neurons': len(best.neurons),
+                    'connections': len(best.connections),
+                    'time': end_time - start_time
+                })
+                
+                print(f"  Результат: fitness={best.fitness:.10f}, сложность={best.complexity}, "
+                      f"время={end_time - start_time:.2f}с")
+                sys.stdout.flush()
+    
+    # Вывод сводных результатов
+    print("\n" + "=" * 60)
+    print("СВОДНЫЕ РЕЗУЛЬТАТЫ ТЕСТИРОВАНИЯ")
+    print("=" * 60)
+    
+    # Сортируем по fitness (лучшие первые)
+    sorted_results = sorted(results, key=lambda x: x['fitness'])
+    
+    print("\nТоп-10 лучших конфигураций:")
+    print("-" * 60)
+    print(f"{'#':<3} {'Поколения':<8} {'Мутации':<7} {'Std':<5} {'Fitness':<15} {'Сложность':<9} {'Время(с)':<8}")
+    print("-" * 60)
+    
+    for i, res in enumerate(sorted_results[:10]):
+        print(f"{i+1:<3} {res['generations']:<8} {res['mutations']:<7} {res['std']:<5.2f} "
+              f"{res['fitness']:<15.10f} {res['complexity']:<9} {res['time']:<8.2f}")
+    
+    # Анализ лучших конфигураций
+    print("\n" + "-" * 60)
+    print("АНАЛИЗ ЛУЧШИХ КОНФИГУРАЦИЙ:")
+    print("-" * 60)
+    
+    best_overall = sorted_results[0]
+    print(f"\nЛучшая конфигурация:")
+    print(f"  - Поколений: {best_overall['generations']}")
+    print(f"  - Мутаций на потомка: {best_overall['mutations']}")
+    print(f"  - Сила мутации (std): {best_overall['std']}")
+    print(f"  - Достигнутая fitness: {best_overall['fitness']:.15f}")
+    print(f"  - Сложность сети: {best_overall['complexity']}")
+    print(f"  - Нейронов: {best_overall['neurons']}")
+    print(f"  - Связей: {best_overall['connections']}")
+    print(f"  - Время выполнения: {best_overall['time']:.2f}с")
+    
+    # Средние результаты по разным параметрам
+    print("\n" + "-" * 60)
+    print("СРЕДНИЕ РЕЗУЛЬТАТЫ ПО ПАРАМЕТРАМ:")
+    print("-" * 60)
+    
+    # По количеству мутаций
+    print("\nПо количеству мутаций:")
+    for mut in mutation_counts:
+        avg_fitness = sum(r['fitness'] for r in results if r['mutations'] == mut) / len([r for r in results if r['mutations'] == mut])
+        print(f"  Мутаций={mut}: средний fitness = {avg_fitness:.10f}")
+    
+    # По силе мутации
+    print("\nПо силе мутации:")
+    for std in mutation_stds:
+        avg_fitness = sum(r['fitness'] for r in results if r['std'] == std) / len([r for r in results if r['std'] == std])
+        print(f"  Std={std}: средний fitness = {avg_fitness:.10f}")
+    
+    # По количеству поколений
+    print("\nПо количеству поколений:")
+    for gens in generation_counts:
+        avg_fitness = sum(r['fitness'] for r in results if r['generations'] == gens) / len([r for r in results if r['generations'] == gens])
+        print(f"  Поколений={gens}: средний fitness = {avg_fitness:.10f}")
+    
+    # Сохранение результатов в файл
+    save_results = input("\nСохранить результаты в файл? (y/n): ").strip().lower()
+    if save_results == 'y':
+        filename = "evolution_test_results.json"
+        import json
+        with open(filename, 'w', encoding='utf-8') as f:
+            json.dump({
+                'summary': {
+                    'total_tests': total_tests,
+                    'best_fitness': best_overall['fitness'],
+                    'best_config': {
+                        'generations': best_overall['generations'],
+                        'mutations': best_overall['mutations'],
+                        'std': best_overall['std']
+                    }
+                },
+                'all_results': results,
+                'top_10': sorted_results[:10]
+            }, f, indent=2, ensure_ascii=False)
+        print(f"Результаты сохранены в {filename}")
     
     print("\nНажмите любую клавишу для возврата в меню...")
     wait_for_key()
@@ -1839,6 +2015,8 @@ def main():
             export_individual(pop_manager)
         elif choice == 9:
             import_individual(pop_manager)
+        elif choice == 10:
+            run_evolution_tests(config, data_manager, mutator, fitness_calc)
         elif choice == 0:
             print("Сохранение популяции перед выходом...")
             pop_manager.save()
