@@ -1,36 +1,58 @@
 ```
 # Build artifacts
-**/bin/
-**/obj/
-**/Debug/
-**/Release/
-*.dll
+*.o
+*.obj
 *.exe
-*.pdb
-*.userprefs
+*.dll
+*.so
+*.a
+*.out
+obj/
+bin/
+dist/
+build/
+Debug/
+Release/
 
 # Dependencies
 packages/
 node_modules/
+.nuget/
+.nyc_output/
+coverage/
 
-# Logs
+# IDE files
+.vs/
+.vscode/
+.idea/
+*.userprefs
+*.suo
+*.user
+*.aps
+*.ncb
 *.log
+
+# System files
+.DS_Store
+Thumbs.db
+*.tmp
+*.temp
 
 # Environment
 .env
 .env.local
 *.env.*
 
-# Editors
-.vscode/
-.idea/
-*.swp
-*.swo
+# Logs
+*.log
 
-# OS
-.DS_Store
-Thumbs.db
-
-# Test results
-**/TestResults/
+# Compressed files
+*.zip
+*.gz
+*.tar
+*.tgz
+*.bz2
+*.xz
+*.7z
+*.rar
 ```
