@@ -1,0 +1,5 @@
+PopulationSize=20
+OffspringPerIndividual=3
+MutationsPerOffspring=5
+DataFilePath=data/training.txt
+SaveFilePath=save/population.txt
