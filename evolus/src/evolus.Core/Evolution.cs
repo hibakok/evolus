@@ -4,12 +4,12 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 
-namespace evolus.Core;
-
-/// <summary>
-/// Пара входных-выходных данных для обучения
-/// </summary>
-public class TrainingPair
+namespace evolus.Core
+{
+    /// <summary>
+    /// Пара входных-выходных данных для обучения
+    /// </summary>
+    public class TrainingPair
 {
     public decimal[] Input { get; }
     public decimal[] Output { get; }
@@ -65,17 +65,23 @@ public static class TrainingDataLoader
     /// </summary>
     public static void SaveToFile(string path, List<TrainingPair> pairs)
     {
-        using var writer = new StreamWriter(path);
-        
-        writer.WriteLine("# Формат: входные_значения | выходные_значения");
-        writer.WriteLine("# Пример: 0 1 | 1 0");
-        writer.WriteLine();
-
-        foreach (var pair in pairs)
+        var writer = new StreamWriter(path);
+        try
         {
-            var inputStr = string.Join(" ", pair.Input.Select(x => x.ToString(CultureInfo.InvariantCulture)));
-            var outputStr = string.Join(" ", pair.Output.Select(x => x.ToString(CultureInfo.InvariantCulture)));
-            writer.WriteLine($"{inputStr} | {outputStr}");
+            writer.WriteLine("# Формат: входные_значения | выходные_значения");
+            writer.WriteLine("# Пример: 0 1 | 1 0");
+            writer.WriteLine();
+
+            foreach (var pair in pairs)
+            {
+                var inputStr = string.Join(" ", pair.Input.Select(x => x.ToString(CultureInfo.InvariantCulture)));
+                var outputStr = string.Join(" ", pair.Output.Select(x => x.ToString(CultureInfo.InvariantCulture)));
+                writer.WriteLine($"{inputStr} | {outputStr}");
+            }
+        }
+        finally
+        {
+            if (writer != null) writer.Dispose();
         }
     }
 }
@@ -285,4 +291,5 @@ public class FitnessCalculator
 
         return false;
     }
+}
 }

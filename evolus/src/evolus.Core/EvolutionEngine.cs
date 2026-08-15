@@ -4,12 +4,12 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 
-namespace evolus.Core;
-
-/// <summary>
-/// Настройки эволюционного алгоритма
-/// </summary>
-public class EvolutionSettings
+namespace evolus.Core
+{
+    /// <summary>
+    /// Настройки эволюционного алгоритма
+    /// </summary>
+    public class EvolutionSettings
 {
     public int InnerPopulationSize { get; set; } = 10; // Размер внутренней популяции
     public int OffspringPerIndividual { get; set; } = 3; // Потомков от каждой особи
@@ -76,17 +76,23 @@ public static class SettingsLoader
 
     public static void SaveToFile(string path, EvolutionSettings settings)
     {
-        using var writer = new StreamWriter(path);
-        
-        writer.WriteLine("# Настройки эволюционного алгоритма evolus");
-        writer.WriteLine("# Формат: ключ=значение");
-        writer.WriteLine();
-        writer.WriteLine($"InnerPopulationSize={settings.InnerPopulationSize}");
-        writer.WriteLine($"OffspringPerIndividual={settings.OffspringPerIndividual}");
-        writer.WriteLine($"MutationsPerOffspring={settings.MutationsPerOffspring}");
-        writer.WriteLine($"InputCount={settings.InputCount}");
-        writer.WriteLine($"OutputCount={settings.OutputCount}");
-        writer.WriteLine($"RandomSeed={settings.RandomSeed}");
+        var writer = new StreamWriter(path);
+        try
+        {
+            writer.WriteLine("# Настройки эволюционного алгоритма evolus");
+            writer.WriteLine("# Формат: ключ=значение");
+            writer.WriteLine();
+            writer.WriteLine($"InnerPopulationSize={settings.InnerPopulationSize}");
+            writer.WriteLine($"OffspringPerIndividual={settings.OffspringPerIndividual}");
+            writer.WriteLine($"MutationsPerOffspring={settings.MutationsPerOffspring}");
+            writer.WriteLine($"InputCount={settings.InputCount}");
+            writer.WriteLine($"OutputCount={settings.OutputCount}");
+            writer.WriteLine($"RandomSeed={settings.RandomSeed}");
+        }
+        finally
+        {
+            if (writer != null) writer.Dispose();
+        }
     }
 }
 
@@ -100,10 +106,10 @@ public class EvolutionEngine
     private readonly FitnessCalculator _fitnessCalculator;
     
     // Внутренняя популяция (неприкосновенная)
-    private List<Individual> _innerPopulation = new();
+    private List<Individual> _innerPopulation = new List<Individual>();
     
     // Лучшая особь за все время
-    public Individual? BestEver { get; private set; }
+    public Individual BestEver { get; private set; }
     
     public int CurrentGeneration { get; private set; } = 0;
 
@@ -164,7 +170,7 @@ public class EvolutionEngine
             // BestEver будет установлен после загрузки первой особи с такой fitness
         }
 
-        Individual? currentBest = null;
+        Individual currentBest = null;
         decimal bestFitness = decimal.MaxValue;
 
         foreach (var line in lines)
@@ -208,24 +214,30 @@ public class EvolutionEngine
     /// </summary>
     public void SavePopulation(string savePath)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(savePath)!);
+        Directory.CreateDirectory(Path.GetDirectoryName(savePath) ?? "");
 
-        using var writer = new StreamWriter(savePath);
-        
-        writer.WriteLine($"GENERATION={CurrentGeneration}");
-        
-        if (BestEver != null)
+        var writer = new StreamWriter(savePath);
+        try
         {
-            writer.WriteLine($"BEST_FITNESS={BestEver.Fitness.ToString(CultureInfo.InvariantCulture)}");
-        }
-
-        for (int i = 0; i < _innerPopulation.Count; i++)
-        {
-            var ind = _innerPopulation[i];
-            var networkPath = savePath.Replace(".txt", $"_ind{i}.net");
-            ind.Network.SaveToFile(networkPath);
+            writer.WriteLine($"GENERATION={CurrentGeneration}");
             
-            writer.WriteLine($"INDIVIDUAL={ind.ParentId?.ToString() ?? "null"}={ind.Fitness.ToString(CultureInfo.InvariantCulture)}");
+            if (BestEver != null)
+            {
+                writer.WriteLine($"BEST_FITNESS={BestEver.Fitness.ToString(CultureInfo.InvariantCulture)}");
+            }
+
+            for (int i = 0; i < _innerPopulation.Count; i++)
+            {
+                var ind = _innerPopulation[i];
+                var networkPath = savePath.Replace(".txt", $"_ind{i}.net");
+                ind.Network.SaveToFile(networkPath);
+                
+                writer.WriteLine($"INDIVIDUAL={ind.ParentId?.ToString() ?? "null"}={ind.Fitness.ToString(CultureInfo.InvariantCulture)}");
+            }
+        }
+        finally
+        {
+            if (writer != null) writer.Dispose();
         }
     }
 
@@ -357,4 +369,5 @@ public class PopulationStatistics
     public decimal WorstFitness { get; set; }
     public double AverageFitness { get; set; }
     public int BestComplexity { get; set; }
+}
 }

@@ -4,12 +4,12 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 
-namespace evolus.Core;
-
-/// <summary>
-/// Представляет связь между нейронами
-/// </summary>
-public class Connection
+namespace evolus.Core
+{
+    /// <summary>
+    /// Представляет связь между нейронами
+    /// </summary>
+    public class Connection
 {
     public int FromNeuronId { get; set; }
     public int ToNeuronId { get; set; }
@@ -286,21 +286,27 @@ public class NeuralNetwork
     /// </summary>
     public void SaveToFile(string path)
     {
-        using var writer = new StreamWriter(path);
-        
-        // Заголовок: входы|выходы
-        writer.WriteLine($"{_inputCount}|{_outputCount}");
-        
-        // Нейроны: ID|Функция
-        foreach (var neuron in Neurons)
+        var writer = new StreamWriter(path);
+        try
         {
-            writer.WriteLine($"N|{neuron.Id}|{(int)neuron.ActivationFunction}");
+            // Заголовок: входы|выходы
+            writer.WriteLine($"{_inputCount}|{_outputCount}");
+            
+            // Нейроны: ID|Функция
+            foreach (var neuron in Neurons)
+            {
+                writer.WriteLine($"N|{neuron.Id}|{(int)neuron.ActivationFunction}");
+            }
+            
+            // Связи: От|К|Вес
+            foreach (var conn in Connections)
+            {
+                writer.WriteLine($"C|{conn.FromNeuronId}|{conn.ToNeuronId}|{conn.Weight}");
+            }
         }
-        
-        // Связи: От|К|Вес
-        foreach (var conn in Connections)
+        finally
         {
-            writer.WriteLine($"C|{conn.FromNeuronId}|{conn.ToNeuronId}|{conn.Weight}");
+            if (writer != null) writer.Dispose();
         }
     }
 
@@ -374,4 +380,5 @@ public class NeuralNetwork
 
         return clone;
     }
+}
 }
