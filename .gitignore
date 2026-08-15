@@ -1,44 +1,86 @@
 ```
-# Build results
-**/bin/
-**/obj/
-**/out/
-
-# User-specific files
-.vs/
-*.user
-*.userosscache
-*.suo
-
-# Build results
-[Dd]ebug/
-[Dd]ebugPublic/
-[Rr]elease/
-[Rr]eleases/
-x64/
-x86/
-build/
-bld/
-[Bb]in/
-[Oo]bj/
-
-# Visual Studio Code
-.vscode/
-
-# NuGet Packages
+# Build artifacts
+bin/
+obj/
+*.exe
+*.dll
+*.pdb
 *.nupkg
+
+# Dependencies
 packages/
+node_modules/
+.nuget/
 
-# Test results
-testresults/
-*.trx
+# Logs
+*.log
 
-# Environment specific settings
+# Environment
 .env
 .env.local
 *.env.*
 
-# OS generated files
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
 .DS_Store
 Thumbs.db
+
+# Coverage
+coverage/
+htmlcov/
+*.coverage
+
+# Distribution
+dist/
+build/
+target/
+
+# Python specific
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.gitattributes
+.next
+.next/cache/
+output.js
+output.css
+coverage/
+lib/
+lib64/
+__pycache__/
+*.so
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
 ```
