@@ -586,7 +586,7 @@ class Mutator {
         const mutated = network.clone();
         
         for (let i = 0; i < mutationCount; i++) {
-            const mutationType = Math.floor(Math.random() * 5);
+            const mutationType = Math.floor(Math.random() * 6);
             
             switch(mutationType) {
                 case 0: // Change weight
@@ -632,6 +632,19 @@ class Mutator {
                     if (mutated.neurons.length > 2) {
                         const idToRemove = Math.floor(Math.random() * mutated.neurons.length);
                         mutated.removeNeuron(idToRemove);
+                    }
+                    break;
+                    
+                case 5: // Change activation function
+                    if (mutated.neurons.length > 0) {
+                        const functions = ['sigmoid', 'tanh', 'relu', 'linear'];
+                        const neuronIdx = Math.floor(Math.random() * mutated.neurons.length);
+                        const currentFunc = mutated.neurons[neuronIdx].activationFunction;
+                        let newFunc;
+                        do {
+                            newFunc = functions[Math.floor(Math.random() * functions.length)];
+                        } while (newFunc === currentFunc && functions.length > 1);
+                        mutated.neurons[neuronIdx].activationFunction = newFunc;
                     }
                     break;
             }
