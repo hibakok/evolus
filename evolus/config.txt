@@ -1,0 +1,23 @@
+# Evolution Configuration File
+# Each setting is on its own line: Key=Value
+
+# Number of individuals in the inner (core) population
+InnerPopulationSize=10
+
+# Number of mutant offspring each individual produces per generation
+OffspringPerIndividual=5
+
+# Number of minimal mutations applied to each offspring
+MutationsPerOffspring=5
+
+# Default number of generations to run when starting evolution
+GenerationsToRun=100
+
+# Path to training data file (format: input1 input2 ... | output1 output2 ...)
+TrainingDataPath=data/training.txt
+
+# Directory where population state is saved/loaded for persistence
+PopulationSavePath=data/population
+
+# Random seed for reproducibility (change for different random behavior)
+RandomSeed=42

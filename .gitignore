@@ -1,0 +1,31 @@
+```
+# Build results
+bin/
+obj/
+
+# User-specific files
+.vs/
+.vim/
+
+# Environment specific files
+.env
+.env.local
+*.env.*
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Compiled files
+*.dll
+*.exe
+*.pdb
+*.so
+*.dylib
+
+# Package manager cache
+.nuget/
+```
