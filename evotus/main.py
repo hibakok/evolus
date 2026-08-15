@@ -368,6 +368,9 @@ class Individual:
     # Кэшированные структуры для ускорения forward pass
     _conn_by_target: Dict[int, List[Tuple[int, float]]] = field(default_factory=dict, repr=False, init=False)
     _needs_rebuild: bool = field(default=True, repr=False, init=False)
+    # Для улучшенных мутаций - кэш важности связей
+    _connection_importance: Dict[int, float] = field(default_factory=dict, repr=False, init=False)
+    _last_successful_mutation_direction: Dict[int, float] = field(default_factory=dict, repr=False, init=False)
     
     def __post_init__(self):
         self.complexity = len(self.connections)
@@ -396,6 +399,9 @@ class Individual:
             output_size=self.output_size
         )
         clone._needs_rebuild = True
+        # Копируем кэши важности и направлений мутаций
+        clone._connection_importance = dict(self._connection_importance)
+        clone._last_successful_mutation_direction = dict(self._last_successful_mutation_direction)
         return clone
     
     def get_input_neurons(self) -> Set[int]:
@@ -733,22 +739,104 @@ class Mutator:
             individual.neurons[neuron_id].activation = random.choice(new_activations)
     
     def _mutate_weight_fast(self, individual: Individual):
-        """Изменяет вес случайной связи (минимальная мутация)"""
+        """Изменяет вес случайной связи (минимальная мутация)
+        
+        УЛУЧШЕННАЯ ВЕРСИЯ С АДАПТИВНОЙ МУТАЦИЕЙ:
+        - Использует важность связей для приоритетного выбора критических весов
+        - Применяет направленную мутацию на основе предыдущих успешных изменений
+        - Адаптивно выбирает размер шага мутации
+        - Комбинирует гауссову мутацию с Коши-распределением для выхода из локальных минимумов
+        """
         if not individual.connections:
             return
-        conn = random.choice(individual.connections)
-        # Небольшое изменение веса
-        conn.weight += random.gauss(0, self.config.get('weight_mutation_std'))
+        
+        # Адаптивный выбор связи на основе важности
+        if individual._connection_importance and random.random() < 0.7:
+            # Выбираем связь взвешенно по важности (более важные чаще мутируют)
+            connections_list = list(individual.connections)
+            weights = []
+            for conn in connections_list:
+                conn_id = id(conn)
+                importance = individual._connection_importance.get(conn_id, 0.5)
+                # Более важные связи имеют больший шанс мутации
+                weights.append(0.5 + importance)
+            
+            # Нормализуем веса
+            total_weight = sum(weights)
+            if total_weight > 0:
+                weights = [w / total_weight for w in weights]
+            
+            # Выбираем связь на основе важности
+            r = random.random()
+            cumulative = 0
+            conn = connections_list[0]
+            for i, w in enumerate(weights):
+                cumulative += w
+                if r <= cumulative:
+                    conn = connections_list[i]
+                    break
+        else:
+            conn = random.choice(individual.connections)
+        
+        conn_id = id(conn)
+        
+        # Проверяем направление предыдущей успешной мутации
+        direction = individual._last_successful_mutation_direction.get(conn_id, 0.0)
+        
+        # Адаптивный выбор размера мутации
+        base_std = self.config.get('weight_mutation_std', 0.5)
+        
+        # 80% времени используем направленную мутацию, 20% - случайное исследование
+        if random.random() < 0.8 and abs(direction) > 0.01:
+            # Направленная мутация: продолжаем в направлении предыдущего успеха
+            # Размер шага адаптируется на основе уверенности направления
+            step_size = base_std * (0.5 + 0.5 * abs(direction))
+            mutation = direction * step_size
+            
+            # Добавляем небольшой шум для исследования окрестности
+            mutation += random.gauss(0, base_std * 0.3)
+        else:
+            # Случайное исследование: комбинируем Гаусс и Коши
+            if random.random() < 0.7:
+                # Гауссова мутация для локального поиска
+                mutation = random.gauss(0, base_std)
+            else:
+                # Коши-мутация для выхода из локальных минимумов (тяжёлые хвосты)
+                # Используем отношение двух нормальных распределений
+                u1 = random.gauss(0, 1)
+                u2 = random.gauss(0, 1)
+                if abs(u2) < 0.001:
+                    u2 = 0.001 if u2 >= 0 else -0.001
+                mutation = u1 / u2 * base_std
+        
+        conn.weight += mutation
     
     def _mutate_bias_fast(self, individual: Individual):
-        """Изменяет биас случайного нейрона (минимальная мутация)"""
+        """Изменяет биас случайного нейрона (минимальная мутация)
+        
+        УЛУЧШЕННАЯ ВЕРСИЯ С АДАПТИВНОЙ МУТАЦИЕЙ:
+        - Использует адаптивный размер шага на основе истории
+        - Применяет комбинацию Гаусса и Коши для лучшего исследования
+        """
         if not individual.neurons:
             return
         
         neuron_id = random.choice(list(individual.neurons.keys()))
         neuron = individual.neurons[neuron_id]
-        # Небольшое изменение биаса
-        neuron.bias += random.gauss(0, self.config.get('weight_mutation_std', 0.5))
+        
+        base_std = self.config.get('weight_mutation_std', 0.5)
+        
+        # Адаптивный выбор типа мутации
+        if random.random() < 0.75:
+            # Гауссова мутация для тонкой настройки
+            neuron.bias += random.gauss(0, base_std * 0.8)
+        else:
+            # Коши-мутация для больших скачков
+            u1 = random.gauss(0, 1)
+            u2 = random.gauss(0, 1)
+            if abs(u2) < 0.001:
+                u2 = 0.001 if u2 >= 0 else -0.001
+            neuron.bias += u1 / u2 * base_std
     
     def _add_connection_fast(self, individual: Individual):
         """Добавляет связь между любыми двумя нейронами.
@@ -831,17 +919,62 @@ class Mutator:
     
     def _multi_weight_mutation(self, individual: Individual):
         """Мутация нескольких весов одновременно - более крупная мутация
-        Позволяет быстрее исследовать пространство параметров."""
+        
+        УЛУЧШЕННАЯ ВЕРСИЯ С ИНТЕЛЛЕКТУАЛЬНЫМ ВЫБОРОМ ВЕСОВ:
+        - Приоритетно выбирает важные связи для мутации
+        - Использует комбинацию направленной и случайной мутации
+        - Применяет разные распределения для разных типов изменений
+        """
         if not individual.connections:
             return
         
-        # Мутируем от 1 до 30% всех весов
-        num_to_mutate = max(1, int(len(individual.connections) * 0.3))
-        connections_to_mutate = random.sample(individual.connections, min(num_to_mutate, len(individual.connections)))
+        # Мутируем от 1 до 40% всех весов (увеличено для лучшего поиска)
+        num_to_mutate = max(1, int(len(individual.connections) * 0.4))
+        
+        # Интеллектуальный выбор связей для мутации
+        if individual._connection_importance and len(individual.connections) > 3:
+            # Сортируем связи по важности и выбираем топ-важные + случайные
+            sorted_conns = sorted(
+                individual.connections,
+                key=lambda c: individual._connection_importance.get(id(c), 0.5),
+                reverse=True
+            )
+            # 50% важных связей + 50% случайных
+            num_important = num_to_mutate // 2
+            num_random = num_to_mutate - num_important
+            connections_to_mutate = sorted_conns[:num_important]
+            remaining = [c for c in individual.connections if c not in connections_to_mutate]
+            if remaining:
+                connections_to_mutate.extend(random.sample(remaining, min(num_random, len(remaining))))
+        else:
+            connections_to_mutate = random.sample(individual.connections, min(num_to_mutate, len(individual.connections)))
         
         for conn in connections_to_mutate:
-            # Более сильное изменение веса для крупных мутаций
-            conn.weight += random.gauss(0, self.config.get('weight_mutation_std', 0.5) * 2.0)
+            conn_id = id(conn)
+            base_std = self.config.get('weight_mutation_std', 0.5)
+            
+            # Проверяем направление предыдущей успешной мутации
+            direction = individual._last_successful_mutation_direction.get(conn_id, 0.0)
+            
+            # Разнообразные стратегии мутации
+            mutation_type = random.random()
+            
+            if mutation_type < 0.6 and abs(direction) > 0.01:
+                # Направленная мутация (60%)
+                step_size = base_std * 2.0 * (0.5 + 0.5 * abs(direction))
+                mutation = direction * step_size + random.gauss(0, base_std * 0.5)
+            elif mutation_type < 0.8:
+                # Гауссова мутация (20%)
+                mutation = random.gauss(0, base_std * 2.0)
+            else:
+                # Коши-мутация для больших скачков (20%)
+                u1 = random.gauss(0, 1)
+                u2 = random.gauss(0, 1)
+                if abs(u2) < 0.001:
+                    u2 = 0.001 if u2 >= 0 else -0.001
+                mutation = u1 / u2 * base_std * 2.0
+            
+            conn.weight += mutation
 
 
 class FitnessCalculator:
@@ -1172,6 +1305,27 @@ class PopulationManager:
                         self.config.get('min_mutation_std', 0.01),
                         current_mutation_std * 0.95
                     )
+                    
+                    # ОБНОВЛЕНИЕ НАПРАВЛЕНИЙ УСПЕШНЫХ МУТАЦИЙ
+                    # Сохраняем направление изменений весов для будущих мутаций
+                    for parent_ind, offspring_ind in zip(self.internal_population, [best_offspring] if 'best_offspring' in dir() else []):
+                        if hasattr(offspring_ind, 'connections') and hasattr(parent_ind, 'connections'):
+                            # Сравниваем веса связей и запоминаем успешные направления
+                            for off_conn in offspring_ind.connections:
+                                for par_conn in parent_ind.connections:
+                                    if (par_conn.from_neuron == off_conn.from_neuron and 
+                                        par_conn.to_neuron == off_conn.to_neuron):
+                                        weight_diff = off_conn.weight - par_conn.weight
+                                        conn_id = id(par_conn)
+                                        # Обновляем направление с экспоненциальным затуханием
+                                        old_dir = parent_ind._last_successful_mutation_direction.get(conn_id, 0.0)
+                                        new_dir = 0.7 * old_dir + 0.3 * (weight_diff / (abs(weight_diff) + 0.1))
+                                        parent_ind._last_successful_mutation_direction[conn_id] = new_dir
+                                        
+                                        # Обновляем важность связи на основе успеха
+                                        old_importance = parent_ind._connection_importance.get(conn_id, 0.5)
+                                        new_importance = min(1.0, old_importance + 0.1)
+                                        parent_ind._connection_importance[conn_id] = new_importance
                 else:
                     stagnation_counter += 1
                     # Если застой, увеличить разнообразие мутаций
@@ -1186,6 +1340,13 @@ class PopulationManager:
                                 self.config.get('max_mutation_std', 2.0),
                                 current_mutation_std * 1.5
                             )
+                        
+                        # Сброс направлений при длительном застое (для выхода из локального минимума)
+                        if stagnation_counter > 100:
+                            for ind in self.internal_population:
+                                ind._last_successful_mutation_direction.clear()
+                                # Частичный сброс важности
+                                ind._connection_importance = {k: v * 0.5 for k, v in ind._connection_importance.items()}
                 
                 progress_log.append(
                     f"Поколение {self.generation}: Лучшая={best.fitness:.15f}, Средняя={avg_fitness:.15f}, "
