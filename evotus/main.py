@@ -576,8 +576,8 @@ class ConfigManager:
     def __init__(self, filename: str = CONFIG_FILE):
         self.filename = filename
         self.config = {
-            'population_size': 50,
-            'offspring_per_individual': 4,
+            'population_size': 1,
+            'offspring_per_individual': 1,
             'mutations_per_offspring': 5,
             'outer_population_mutations': 5,
             'mutation_rate_weight': 0.3,
