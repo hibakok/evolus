@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text;
 
 namespace evolus.Core
 {
@@ -76,7 +77,7 @@ public static class SettingsLoader
 
     public static void SaveToFile(string path, EvolutionSettings settings)
     {
-        var writer = new StreamWriter(path);
+        var writer = new StreamWriter(path, false, System.Text.Encoding.UTF8);
         try
         {
             writer.WriteLine("# Настройки эволюционного алгоритма evolus");
@@ -214,9 +215,9 @@ public class EvolutionEngine
     /// </summary>
     public void SavePopulation(string savePath)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(savePath) ?? "");
+        Directory.CreateDirectory(Path.GetDirectoryName(savePath) ?? ".");
 
-        var writer = new StreamWriter(savePath);
+        var writer = new StreamWriter(savePath, false, System.Text.Encoding.UTF8);
         try
         {
             writer.WriteLine($"GENERATION={CurrentGeneration}");

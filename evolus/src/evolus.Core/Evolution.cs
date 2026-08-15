@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text;
 
 namespace evolus.Core
 {
@@ -65,7 +66,7 @@ public static class TrainingDataLoader
     /// </summary>
     public static void SaveToFile(string path, List<TrainingPair> pairs)
     {
-        var writer = new StreamWriter(path);
+        var writer = new StreamWriter(path, false, System.Text.Encoding.UTF8);
         try
         {
             writer.WriteLine("# Формат: входные_значения | выходные_значения");

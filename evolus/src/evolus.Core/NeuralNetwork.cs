@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text;
 
 namespace evolus.Core
 {
@@ -100,11 +101,17 @@ public class NeuralNetwork
             });
         }
 
-        // Создаем выходные нейроны
+        // Создаем выходные нейроны - их ID должны идти после входных
+        int outputStartId = inputCount;
         for (int i = 0; i < outputCount; i++)
         {
-            network.Neurons.Add(new Neuron(network._nextNeuronId++));
+            network.Neurons.Add(new Neuron(outputStartId + i)
+            {
+                ActivationFunction = ActivationFunction.Sigmoid
+            });
         }
+        
+        network._nextNeuronId = outputStartId + outputCount;
 
         return network;
     }
@@ -150,7 +157,11 @@ public class NeuralNetwork
         var outputs = new decimal[_outputCount];
         for (int i = 0; i < _outputCount; i++)
         {
-            outputs[i] = Neurons[_inputCount + i].Output;
+            var outputNeuron = Neurons.FirstOrDefault(n => n.Id == _inputCount + i);
+            if (outputNeuron != null)
+            {
+                outputs[i] = outputNeuron.Output;
+            }
         }
 
         return outputs;
@@ -286,14 +297,14 @@ public class NeuralNetwork
     /// </summary>
     public void SaveToFile(string path)
     {
-        var writer = new StreamWriter(path);
+        var writer = new StreamWriter(path, false, System.Text.Encoding.UTF8);
         try
         {
             // Заголовок: входы|выходы
             writer.WriteLine($"{_inputCount}|{_outputCount}");
             
             // Нейроны: ID|Функция
-            foreach (var neuron in Neurons)
+            foreach (var neuron in Neurons.OrderBy(n => n.Id))
             {
                 writer.WriteLine($"N|{neuron.Id}|{(int)neuron.ActivationFunction}");
             }
@@ -301,7 +312,7 @@ public class NeuralNetwork
             // Связи: От|К|Вес
             foreach (var conn in Connections)
             {
-                writer.WriteLine($"C|{conn.FromNeuronId}|{conn.ToNeuronId}|{conn.Weight}");
+                writer.WriteLine($"C|{conn.FromNeuronId}|{conn.ToNeuronId}|{conn.Weight.ToString(CultureInfo.InvariantCulture)}");
             }
         }
         finally
@@ -368,7 +379,7 @@ public class NeuralNetwork
             _nextNeuronId = _nextNeuronId
         };
 
-        foreach (var neuron in Neurons)
+        foreach (var neuron in Neurons.OrderBy(n => n.Id))
         {
             clone.Neurons.Add(new Neuron(neuron.Id) { ActivationFunction = neuron.ActivationFunction });
         }
