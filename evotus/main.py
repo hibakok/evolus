@@ -104,6 +104,8 @@ def sigmoid(x: float) -> float:
     if x > _SIGMOID_MAX:
         return 1.0
     idx = int((x - _SIGMOID_MIN) / _SIGMOID_STEP)
+    # Защита от выхода за границы таблицы
+    idx = max(0, min(idx, _SIGMOID_TABLE_SIZE - 1))
     return _SIGMOID_TABLE[idx]
 
 def tanh_act(x: float) -> float:
@@ -123,6 +125,8 @@ def gaussian(x: float) -> float:
     if x < _SIGMOID_MIN or x > _SIGMOID_MAX:
         return 0.0
     idx = int((x - _SIGMOID_MIN) / _SIGMOID_STEP)
+    # Защита от выхода за границы таблицы
+    idx = max(0, min(idx, _SIGMOID_TABLE_SIZE - 1))
     return _GAUSSIAN_TABLE[idx]
 
 def sin_act(x: float) -> float:
@@ -130,6 +134,8 @@ def sin_act(x: float) -> float:
     if x < _SIGMOID_MIN or x > _SIGMOID_MAX:
         return math.sin(x)
     idx = int((x - _SIGMOID_MIN) / _SIGMOID_STEP)
+    # Защита от выхода за границы таблицы
+    idx = max(0, min(idx, _SIGMOID_TABLE_SIZE - 1))
     return _SIN_TABLE[idx]
 
 def cos_act(x: float) -> float:
@@ -137,6 +143,8 @@ def cos_act(x: float) -> float:
     if x < _SIGMOID_MIN or x > _SIGMOID_MAX:
         return math.cos(x)
     idx = int((x - _SIGMOID_MIN) / _SIGMOID_STEP)
+    # Защита от выхода за границы таблицы
+    idx = max(0, min(idx, _SIGMOID_TABLE_SIZE - 1))
     return _COS_TABLE[idx]
 
 def swish(x: float) -> float:
@@ -172,6 +180,11 @@ def sinc_act(x: float) -> float:
 
 def bipolar_sigmoid(x: float) -> float:
     """Биполярная сигмоида в диапазоне [-1, 1]"""
+    # Защита от переполнения
+    if x > 20:
+        return 1.0
+    if x < -20:
+        return -1.0
     return 2.0 / (1.0 + math.exp(-x)) - 1.0
 
 def triangular(x: float) -> float:
@@ -261,9 +274,9 @@ def logarithmic(x: float) -> float:
 
 def exponential(x: float) -> float:
     """Экспоненциальная функция с ограничением"""
-    if x > 10:
-        return math.exp(10)
-    if x < -10:
+    if x > 20:
+        return math.exp(20)
+    if x < -20:
         return 0.0
     return math.exp(x)
 
