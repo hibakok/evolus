@@ -1,36 +1,4 @@
-```
-# Build artifacts
-**/bin/
-**/obj/
-**/Debug/
-**/Release/
-*.dll
-*.exe
-*.pdb
-*.userprefs
-
-# Dependencies
-packages/
-node_modules/
-
-# Logs
-*.log
-
-# Environment
-.env
-.env.local
-*.env.*
-
-# Editors
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Test results
-**/TestResults/
+```yaml
+# Configuration file for GitHub Actions workflow
+!.github/workflows/build.yml
 ```
