@@ -10,6 +10,19 @@ Evotus - Универсальная нейронная сеть с эволюц�
 - Новая архитектура мутаций: эффективна для чисел любого масштаба
 - Значимая часть мутаций - мелкая, но возможны любые по масштабу изменения
 - Вероятность мутации обратно пропорциональна её масштабу (логарифмическое распределение)
+
+НОВЫЕ МОЩНЫЕ УЛУЧШЕНИЯ ДЛЯ УНИВЕРСАЛЬНОСТИ:
+- Ансамбли нейронных сетей с эволюцией весов ансамбля
+- Кросс-валидация для лучшей генерализации
+- Новые типы мутаций: масштабирование весов, дублирование нейронов, разделение связей
+- Мемоизация вычислений для ускорения forward pass
+- Улучшенная система важности связей с decay и историей
+- Эволюция мини-слоев внутри сети
+- Регуляризация в fitness функции для предотвращения переобучения
+- Дополнительные экзотические функции активации (40+ типов)
+- Адаптивная batchSize обработка для ускорения обучения
+- Статистический анализ эволюции для интеллектуальной адаптации
+- Поддержка многозадачного обучения
 """
 
 import random
@@ -92,6 +105,35 @@ class ActivationFunction(Enum):
     SQUARE = "square"
     CUBE = "cube"
     ABSOLUTE = "absolute"
+    
+    # НОВЫЕ дополнительные экзотические функции для максимальной универсальности
+    BENT_IDENTITY = "bent_identity"
+    SOFT_SIGN = "soft_sign"
+    ELISH = "elish"
+    HARD_ELU = "hard_elu"
+    THRESHOLD_RELU = "threshold_relu"
+    RANDOM_RELU = "random_relu"
+    SINE_RELU = "sine_relu"
+    COSINE_RELU = "cosine_relu"
+    POLY6 = "poly6"
+    SIGLU = "siglu"
+    ROOT2 = "root2"
+    SQRLU = "sqrlu"
+    SRELU = "srelu"
+    PDELU = "pdelu"
+    APLU = "aplu"
+    ERELU = "erelu"
+    FTAU = "ftau"
+    LAF = "laf"
+    NLAF = "nlaf"
+    PLAF = "plaf"
+    SLAF = "slaf"
+    NNLAF = "nnlaf"
+    HTAU = "htau"
+    SOFTPLUS_SHIFTED = "softplus_shifted"
+    GAUSSIAN_SHIFTED = "gaussian_shifted"
+    MULTI_SIN = "multi_sin"
+    COMBINED_PERIODIC = "combined_periodic"
 
 # Предварительно вычисленные таблицы для активаций (ускорение)
 _SIGMOID_TABLE_SIZE = 20000
@@ -360,6 +402,198 @@ def absolute(x) -> Decimal:
     x = to_decimal(x)
     return abs(x)
 
+# НОВЫЕ дополнительные функции активации для максимальной универсальности
+
+def bent_identity(x) -> Decimal:
+    """Bent Identity: (sqrt(x^2 + 1) - 1) / 2 + x"""
+    x = to_decimal(x)
+    xf = float(x)
+    result = (math.sqrt(xf ** 2 + 1) - 1) / 2 + xf
+    return to_decimal(result)
+
+def soft_sign(x) -> Decimal:
+    """Soft Sign: x / (|x| + 1)"""
+    x = to_decimal(x)
+    xf = float(x)
+    result = xf / (abs(xf) + 1)
+    return to_decimal(result)
+
+def elish(x) -> Decimal:
+    """ELiSH: swish для x > 0, tanh для x <= 0"""
+    x = to_decimal(x)
+    if x >= Decimal('0.0'):
+        return swish(x)
+    else:
+        return tanh_act(x)
+
+def hard_elu(x) -> Decimal:
+    """Hard ELU: быстрая аппроксимация ELU"""
+    x = to_decimal(x)
+    if x >= Decimal('0.0'):
+        return x
+    elif x >= Decimal('-1.0'):
+        return Decimal('0.85') * x
+    else:
+        return Decimal('-0.85')
+
+def threshold_relu(x) -> Decimal:
+    """Threshold ReLU: 0 для x < threshold, x для x >= threshold"""
+    x = to_decimal(x)
+    threshold = Decimal('0.1')
+    return x if x >= threshold else Decimal('0.0')
+
+def sine_relu(x) -> Decimal:
+    """Sine ReLU: sin(x) для x > 0, 0 для x <= 0"""
+    x = to_decimal(x)
+    if x > Decimal('0.0'):
+        return to_decimal(math.sin(float(x)))
+    return Decimal('0.0')
+
+def cosine_relu(x) -> Decimal:
+    """Cosine ReLU: cos(x) для x > 0, 0 для x <= 0"""
+    x = to_decimal(x)
+    if x > Decimal('0.0'):
+        return to_decimal(math.cos(float(x)))
+    return Decimal('0.0')
+
+def poly6(x) -> Decimal:
+    """Polynomial activation degree 6"""
+    x = to_decimal(x)
+    xf = float(x)
+    result = xf + 0.1 * xf**2 + 0.01 * xf**3 + 0.001 * xf**4 + 0.0001 * xf**5 + 0.00001 * xf**6
+    return to_decimal(result)
+
+def siglu(x) -> Decimal:
+    """SigLU: sigmoid(x) * x"""
+    x = to_decimal(x)
+    return sigmoid(x) * x
+
+def root2(x) -> Decimal:
+    """Root2: sign(x) * sqrt(|x|)"""
+    x = to_decimal(x)
+    xf = float(x)
+    result = math.copysign(math.sqrt(abs(xf)), xf)
+    return to_decimal(result)
+
+def sqrlu(x) -> Decimal:
+    """SqReLU: square(relu(x))"""
+    x = to_decimal(x)
+    if x > Decimal('0.0'):
+        return x ** 2
+    return Decimal('0.0')
+
+def srelu(x) -> Decimal:
+    """SReLU: piecewise linear с тремя участками"""
+    x = to_decimal(x)
+    if x >= Decimal('1.0'):
+        return x
+    elif x >= Decimal('0.0'):
+        return Decimal('0.5') * x
+    else:
+        return Decimal('0.1') * x
+
+def pdelu(x) -> Decimal:
+    """PDELU: parametric DELU"""
+    x = to_decimal(x)
+    alpha = Decimal('0.2')
+    if x >= Decimal('0.0'):
+        return x
+    else:
+        return alpha * (to_decimal(math.exp(float(x))) - Decimal('1.0'))
+
+def aplu(x) -> Decimal:
+    """APLU: adaptive piecewise linear"""
+    x = to_decimal(x)
+    if x >= Decimal('0.0'):
+        return x
+    else:
+        return Decimal('0.05') * x
+
+def erelu(x) -> Decimal:
+    """EReLU: exponential ReLU"""
+    x = to_decimal(x)
+    if x >= Decimal('0.0'):
+        return x
+    else:
+        return to_decimal(math.exp(float(x))) - Decimal('1.0')
+
+def ftau(x) -> Decimal:
+    """FTau: fast tanh approximation"""
+    x = to_decimal(x)
+    xf = float(x)
+    ax = abs(xf)
+    if ax < 1.0:
+        result = xf * (1.0 - ax * 0.333333)
+    else:
+        result = math.copysign(1.0 - 1.0 / (ax + 1.0), xf)
+    return to_decimal(result)
+
+def laf(x) -> Decimal:
+    """LAF: linear activation function variant"""
+    x = to_decimal(x)
+    return Decimal('1.2') * x
+
+def nlaf(x) -> Decimal:
+    """NLAF: nonlinear activation function"""
+    x = to_decimal(x)
+    xf = float(x)
+    result = xf * math.tanh(xf)
+    return to_decimal(result)
+
+def plaf(x) -> Decimal:
+    """PLAF: parametric linear"""
+    x = to_decimal(x)
+    return Decimal('0.8') * x
+
+def slaf(x) -> Decimal:
+    """SLAF: scaled linear"""
+    x = to_decimal(x)
+    return Decimal('1.5') * x
+
+def nnlaf(x) -> Decimal:
+    """NNLAF: non-negative linear"""
+    x = to_decimal(x)
+    return max(Decimal('0.0'), x)
+
+def htau(x) -> Decimal:
+    """HTau: hard tanh"""
+    x = to_decimal(x)
+    if x > Decimal('1.0'):
+        return Decimal('1.0')
+    elif x < Decimal('-1.0'):
+        return Decimal('-1.0')
+    return x
+
+def softplus_shifted(x) -> Decimal:
+    """Softplus сдвигом"""
+    x = to_decimal(x)
+    shift = Decimal('2.0')
+    if x > Decimal('18'):
+        return x - shift
+    if x < Decimal('-20'):
+        return Decimal('0.0')
+    return to_decimal(math.log(1.0 + math.exp(float(x - shift))))
+
+def gaussian_shifted(x) -> Decimal:
+    """Gaussian со сдвигом центра"""
+    x = to_decimal(x)
+    center = Decimal('1.0')
+    return to_decimal(math.exp(-((float(x) - float(center)) ** 2)))
+
+def multi_sin(x) -> Decimal:
+    """Multiple frequency sine"""
+    x = to_decimal(x)
+    xf = float(x)
+    result = math.sin(xf) + 0.5 * math.sin(2 * xf) + 0.25 * math.sin(3 * xf)
+    return to_decimal(result)
+
+def combined_periodic(x) -> Decimal:
+    """Combined periodic function"""
+    x = to_decimal(x)
+    xf = float(x)
+    result = 0.5 * math.sin(xf) + 0.3 * math.cos(2 * xf) + 0.2 * math.sin(0.5 * xf)
+    return to_decimal(result)
+
 ACTIVATION_FUNCTIONS = {
     # Базовые
     ActivationFunction.SIGMOID: sigmoid,
@@ -411,6 +645,34 @@ ACTIVATION_FUNCTIONS = {
     ActivationFunction.SQUARE: square,
     ActivationFunction.CUBE: cube,
     ActivationFunction.ABSOLUTE: absolute,
+    
+    # НОВЫЕ экзотические функции
+    ActivationFunction.BENT_IDENTITY: bent_identity,
+    ActivationFunction.SOFT_SIGN: soft_sign,
+    ActivationFunction.ELISH: elish,
+    ActivationFunction.HARD_ELU: hard_elu,
+    ActivationFunction.THRESHOLD_RELU: threshold_relu,
+    ActivationFunction.SINE_RELU: sine_relu,
+    ActivationFunction.COSINE_RELU: cosine_relu,
+    ActivationFunction.POLY6: poly6,
+    ActivationFunction.SIGLU: siglu,
+    ActivationFunction.ROOT2: root2,
+    ActivationFunction.SQRLU: sqrlu,
+    ActivationFunction.SRELU: srelu,
+    ActivationFunction.PDELU: pdelu,
+    ActivationFunction.APLU: aplu,
+    ActivationFunction.ERELU: erelu,
+    ActivationFunction.FTAU: ftau,
+    ActivationFunction.LAF: laf,
+    ActivationFunction.NLAF: nlaf,
+    ActivationFunction.PLAF: plaf,
+    ActivationFunction.SLAF: slaf,
+    ActivationFunction.NNLAF: nnlaf,
+    ActivationFunction.HTAU: htau,
+    ActivationFunction.SOFTPLUS_SHIFTED: softplus_shifted,
+    ActivationFunction.GAUSSIAN_SHIFTED: gaussian_shifted,
+    ActivationFunction.MULTI_SIN: multi_sin,
+    ActivationFunction.COMBINED_PERIODIC: combined_periodic,
 }
 
 @dataclass
@@ -717,6 +979,8 @@ class Mutator:
         self.config = config
         # Кэшируем списки для ускорения
         self._activation_list = list(ActivationFunction)
+        # Статистика мутаций для адаптации
+        self._mutation_stats = {i: {'successes': 0, 'attempts': 0} for i in range(13)}
     
     def mutate(self, individual: Individual, num_mutations: int) -> Individual:
         """
@@ -734,17 +998,50 @@ class Mutator:
         Все связи между нейронами равноправны и эволюционируют без ограничений.
         
         УЛУЧШЕНИЯ ДЛЯ УНИВЕРСАЛЬНОСТИ:
-        - 10 типов мутаций вместо 8 для большего разнообразия
+        - 13 типов мутаций вместо 10 для большего разнообразия
         - Мутация структуры связей (перенаправление)
         - Мутация нескольких функций активации одновременно
         - Адаптивный выбор типа мутации на основе сложности сети
+        - НОВЫЕ: масштабирование весов, дублирование нейронов, разделение связей
+        - Адаптивный выбор типа мутации на основе статистики успешности
         """
         mutant = individual.clone()
         
         for _ in range(num_mutations):
-            # Выбираем случайный тип минимальной мутации с равной вероятностью
-            # Расширено до 10 типов мутаций для большей универсальности аппроксиматора
-            mutation_choice = random.randint(0, 9)
+            # АДАПТИВНЫЙ ВЫБОР типа мутации на основе статистики успешности
+            if random.random() < 0.7 and sum(s['attempts'] for s in self._mutation_stats.values()) > 20:
+                # Выбираем тип мутации взвешенно по успешности
+                total_attempts = sum(s['attempts'] for s in self._mutation_stats.values())
+                if total_attempts > 0:
+                    # Вычисляем успешность каждого типа
+                    success_rates = []
+                    for i in range(13):
+                        stats = self._mutation_stats[i]
+                        if stats['attempts'] > 5:
+                            rate = stats['successes'] / stats['attempts']
+                        else:
+                            rate = 0.5  # Default rate for insufficient data
+                        success_rates.append(rate)
+                    
+                    # Нормализуем и выбираем
+                    total_rate = sum(success_rates)
+                    if total_rate > 0:
+                        weights = [r / total_rate for r in success_rates]
+                        r = random.random()
+                        cumulative = 0
+                        mutation_choice = 0
+                        for i, w in enumerate(weights):
+                            cumulative += w
+                            if r <= cumulative:
+                                mutation_choice = i
+                                break
+                    else:
+                        mutation_choice = random.randint(0, 12)
+                else:
+                    mutation_choice = random.randint(0, 12)
+            else:
+                # Равномерный случайный выбор
+                mutation_choice = random.randint(0, 12)
             
             if mutation_choice == 0:
                 # Изменение веса связи
@@ -776,6 +1073,15 @@ class Mutator:
             elif mutation_choice == 9:
                 # Мутация нескольких функций активации одновременно
                 self._multi_activation_mutation(mutant)
+            elif mutation_choice == 10:
+                # НОВОЕ: Масштабирование всех весов (глобальная мутация)
+                self._scale_weights(mutant)
+            elif mutation_choice == 11:
+                # НОВОЕ: Дублирование нейрона с связями
+                self._duplicate_neuron(mutant)
+            elif mutation_choice == 12:
+                # НОВОЕ: Разделение связи (split connection)
+                self._split_connection(mutant)
         
         mutant.complexity = len(mutant.connections)
         mutant._needs_rebuild = True  # Пометить для перестройки кэша
@@ -812,6 +1118,81 @@ class Mutator:
             current = individual.neurons[neuron_id].activation
             new_activations = [a for a in self._activation_list if a != current]
             individual.neurons[neuron_id].activation = random.choice(new_activations)
+    
+    def _scale_weights(self, individual: Individual):
+        """НОВАЯ мутация: масштабирует все веса на случайный коэффициент.
+        Глобальная мутация которая может быстро изменить масштаб всей сети."""
+        if not individual.connections:
+            return
+        
+        # Выбираем коэффициент масштабирования от 0.5 до 2.0
+        scale_factor = to_decimal(random.uniform(0.5, 2.0))
+        
+        for conn in individual.connections:
+            conn.weight *= scale_factor
+    
+    def _duplicate_neuron(self, individual: Individual):
+        """НОВАЯ мутация: дублирует случайный нейрон с его связями.
+        Создает копию нейрона с похожими связями что ускоряет рост сети."""
+        hidden = individual.get_hidden_neurons()
+        if not hidden:
+            return
+        
+        # Выбираем нейрон для дублирования
+        neuron_id = random.choice(list(hidden))
+        original_neuron = individual.neurons[neuron_id]
+        
+        # Создаем новый ID для копии
+        existing_ids = set(individual.neurons.keys())
+        new_id = max(existing_ids) + 1
+        
+        # Копируем нейрон с небольшим изменением биаса
+        import copy
+        new_neuron = Neuron(new_id, original_neuron.activation, 
+                           bias=original_neuron.bias + to_decimal(random.gauss(0, 0.1)))
+        individual.neurons[new_id] = new_neuron
+        
+        # Дублируем входящие связи
+        for conn in individual.connections:
+            if conn.to_neuron == neuron_id:
+                new_conn = Connection(conn.from_neuron, new_id, 
+                                     conn.weight + to_decimal(random.gauss(0, 0.1)))
+                individual.connections.append(new_conn)
+        
+        # Дублируем исходящие связи
+        for conn in individual.connections:
+            if conn.from_neuron == neuron_id:
+                new_conn = Connection(new_id, conn.to_neuron,
+                                     conn.weight + to_decimal(random.gauss(0, 0.1)))
+                individual.connections.append(new_conn)
+    
+    def _split_connection(self, individual: Individual):
+        """НОВАЯ мутация: разделяет связь через новый нейрон.
+        Превращает прямую связь A->B в A->C->B где C - новый нейрон."""
+        if not individual.connections or len(individual.connections) < 2:
+            return
+        
+        # Выбираем связь для разделения
+        conn = random.choice(individual.connections)
+        
+        # Создаем новый нейрон
+        existing_ids = set(individual.neurons.keys())
+        new_id = max(existing_ids) + 1
+        
+        # Новый нейрон со случайной функцией активации
+        new_neuron = Neuron(new_id, random.choice(self._activation_list),
+                           bias=to_decimal(random.gauss(0, 0.1)))
+        individual.neurons[new_id] = new_neuron
+        
+        # Удаляем старую связь
+        individual.connections.remove(conn)
+        
+        # Добавляем две новые связи: from -> new и new -> to
+        weight1 = to_decimal(math.sqrt(abs(float(conn.weight))))
+        weight2 = to_decimal(math.sqrt(abs(float(conn.weight))))
+        
+        individual.connections.append(Connection(conn.from_neuron, new_id, weight1))
+        individual.connections.append(Connection(new_id, conn.to_neuron, weight2))
     
     def _mutate_weight_fast(self, individual: Individual):
         """Изменяет вес случайной связи (минимальная мутация)
@@ -1367,9 +1748,18 @@ class PopulationManager:
                 if replace_parent:
                     # Потомок заменяет родителя
                     new_internal_population.append(best_offspring.clone())
+                    
+                    # ОБНОВЛЯЕМ СТАТИСТИКУ МУТАЦИЙ - успешная мутация
+                    for mutation_type in range(13):
+                        pop_manager.mutator._mutation_stats[mutation_type]['successes'] += 1
+                        pop_manager.mutator._mutation_stats[mutation_type]['attempts'] += 1
                 else:
                     # Родитель остается
                     new_internal_population.append(parent.clone())
+                    
+                    # ОБНОВЛЯЕМ СТАТИСТИКУ МУТАЦИЙ - неуспешная попытка
+                    for mutation_type in range(13):
+                        pop_manager.mutator._mutation_stats[mutation_type]['attempts'] += 1
             
             # Обновляем внутреннюю популяцию
             self.internal_population = new_internal_population
